@@ -24,6 +24,11 @@ class BaseRepository(Generic[ModelT]):
         await self._session.flush()
         return entity
 
+    async def update(self, entity: ModelT) -> ModelT:
+        """Manda a la BD los cambios hechos a una entidad ya cargada (y llena updated_at)."""
+        await self._session.flush()
+        return entity
+
     async def delete(self, entity: ModelT) -> None:
         await self._session.delete(entity)
         await self._session.flush()

@@ -1,20 +1,20 @@
 import asyncio
 import uuid
 
-from app.core.exceptions import NotFoundError, PayloadTooLargeError, ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.document_types import DocumentMimeType
 from app.dto.imports import ImportOut, ImportRecord
 from app.factories.import_factory import build_import, to_import_out, to_import_record
 from app.interfaces.storage_provider import StorageProvider
 from app.interfaces.unit_of_work import UnitOfWorkFactory, UnitOfWorkInterface
 from app.services.idempotency_service import IdempotencyService
-from app.utils.file_signatures import SIGNATURE_BYTES, detect_document_type
+from app.services.upload_validation import check_upload
 from app.utils.filenames import clean_filename
 from app.utils.hashing import bytes_hash
 from app.utils.pdf_pages import ProtectedPdfError, UnreadablePdfError, count_pdf_pages
 
-BYTES_PER_MB = 1024 * 1024
 IMPORT_NOT_FOUND = "No encontramos el documento original."
+UNSUPPORTED_DOCUMENT = "Solo se aceptan fotos (JPG, PNG o WEBP) o archivos PDF."
 
 
 class ImportService:
@@ -53,16 +53,7 @@ class ImportService:
     async def _validate(self, content: bytes) -> DocumentMimeType:
         """El tipo, el tamaño y las páginas se revisan aquí con el archivo real.
         Lo que diga el navegador (nombre, Content-Type) no se toma en cuenta."""
-        if not content:
-            raise ValidationError("El archivo está vacío.", code="empty_file")
-        if len(content) > self._max_upload_bytes:
-            max_mb = self._max_upload_bytes // BYTES_PER_MB
-            raise PayloadTooLargeError(f"El archivo pesa más de {max_mb} MB. Elige uno más ligero.")
-        mime_type = detect_document_type(content[:SIGNATURE_BYTES])
-        if mime_type is None:
-            raise ValidationError(
-                "Solo se aceptan fotos (JPG, PNG o WEBP) o archivos PDF.", code="unsupported_file_type"
-            )
+        mime_type = check_upload(content, self._max_upload_bytes, DocumentMimeType, UNSUPPORTED_DOCUMENT)
         if mime_type == DocumentMimeType.PDF:
             await self._validate_pdf_pages(content)
         return mime_type

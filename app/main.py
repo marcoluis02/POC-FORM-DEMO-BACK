@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.database import dispose_engine
 from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import configure_logging
-from app.routes import health, imports, templates
+from app.routes import health, imports, responses, templates
 from app.security.body_size_middleware import BodySizeLimitMiddleware
 from app.security.rate_limit_middleware import RateLimitMiddleware
 from app.workers.worker_runner import WorkerRunner
@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(templates.router)
     app.include_router(imports.router)
+    app.include_router(responses.router)
     return app
 
 

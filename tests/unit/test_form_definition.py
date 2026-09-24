@@ -18,14 +18,72 @@ def test_fixture_acordado_es_valido(maintenance_template):
 
 def test_acepta_todos_los_tipos_soportados(maintenance_template):
     base_field = maintenance_template["sections"][0]["fields"][0]
+    sample_options = [
+        {"value": "a", "label": "Opción A"},
+        {"value": "b", "label": "Opción B"},
+    ]
     maintenance_template["sections"][0]["fields"] = [
-        {**base_field, "id": f"f_{index:03d}", "type": field_type.value, "position": index}
+        {
+            **base_field,
+            "id": f"f_{index:03d}",
+            "type": field_type.value,
+            "position": index,
+            "unit": None,
+            "options": sample_options if field_type == FieldType.SELECT else None,
+        }
         for index, field_type in enumerate(FieldType, start=1)
     ]
 
     definition = FormDefinition.model_validate(maintenance_template)
 
     assert {f.type for f in definition.sections[0].fields} == set(FieldType)
+
+
+def test_select_exige_opciones_con_valores_unicos(maintenance_template):
+    field = maintenance_template["sections"][0]["fields"][0]
+    field["type"] = FieldType.SELECT
+    field["unit"] = None
+    field["options"] = [{"value": "ok", "label": "Bien"}, {"value": "ok", "label": "Otro"}]
+
+    with pytest.raises(ValidationError, match="mismo valor"):
+        FormDefinition.model_validate(maintenance_template)
+
+
+def test_select_sin_opciones_se_rechaza(maintenance_template):
+    field = maintenance_template["sections"][0]["fields"][0]
+    field["type"] = FieldType.SELECT
+    field["unit"] = None
+    field.pop("options", None)
+
+    with pytest.raises(ValidationError, match="al menos 2 opciones"):
+        FormDefinition.model_validate(maintenance_template)
+
+
+def test_opciones_en_campo_que_no_es_select_se_rechazan(maintenance_template):
+    field = maintenance_template["sections"][0]["fields"][0]
+    field["options"] = [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}]
+
+    with pytest.raises(ValidationError, match="solo aplican"):
+        FormDefinition.model_validate(maintenance_template)
+
+
+def test_select_valido_guarda_las_opciones(maintenance_template):
+    field = maintenance_template["sections"][0]["fields"][0]
+    field["type"] = FieldType.SELECT
+    field["unit"] = None
+    field["options"] = [
+        {"value": "bueno", "label": "Bueno"},
+        {"value": "regular", "label": "Regular"},
+        {"value": "malo", "label": "Malo"},
+    ]
+
+    definition = FormDefinition.model_validate(maintenance_template)
+
+    assert [option.value for option in definition.sections[0].fields[0].options] == [
+        "bueno",
+        "regular",
+        "malo",
+    ]
 
 
 def test_rechaza_tipo_no_soportado(maintenance_template):

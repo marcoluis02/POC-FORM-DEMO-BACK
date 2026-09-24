@@ -3,6 +3,7 @@ import logging
 import threading
 from datetime import timedelta
 
+from app.cloud.s3_storage import S3Storage
 from app.core.config import Settings
 from app.core.database import DATABASE_UNAVAILABLE_ERRORS, build_engine, build_session_factory
 from app.core.unit_of_work import UnitOfWork
@@ -44,7 +45,11 @@ class WorkerRunner:
     async def _main(self) -> None:
         engine = build_engine(self._settings, self._settings.worker_db_pool_size, max_overflow=0)
         session_factory = build_session_factory(engine)
-        context = TaskContext(uow_factory=lambda: UnitOfWork(session_factory), settings=self._settings)
+        context = TaskContext(
+            uow_factory=lambda: UnitOfWork(session_factory),
+            settings=self._settings,
+            storage=S3Storage(self._settings),
+        )
         recurring_scheduled = False
         try:
             while not self._stop.is_set():

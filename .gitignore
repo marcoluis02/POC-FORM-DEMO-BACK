@@ -34,7 +34,7 @@ MANIFEST
 
 
 .env
-.env.example
+
 
 # Installer logs
 pip-log.txt
