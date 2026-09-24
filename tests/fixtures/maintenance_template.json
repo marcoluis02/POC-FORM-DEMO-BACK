@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "title": "Revisión de mantenimiento",
+  "sections": [
+    {
+      "id": "s_001",
+      "title": "General",
+      "position": 1,
+      "fields": [
+        {
+          "id": "f_001",
+          "type": "yes_no_na",
+          "label": "¿Se limpió el filtro?",
+          "required": true,
+          "position": 1,
+          "allow_evidence": true
+        },
+        {
+          "id": "f_002",
+          "type": "number",
+          "label": "Temperatura final",
+          "unit": "°F",
+          "required": false,
+          "position": 2,
+          "allow_evidence": false
+        }
+      ]
+    }
+  ]
+}
