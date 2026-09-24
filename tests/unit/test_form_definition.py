@@ -75,6 +75,27 @@ def test_rechaza_posiciones_repetidas_en_una_seccion(maintenance_template):
         FormDefinition.model_validate(maintenance_template)
 
 
+def test_lo_que_manda_el_cliente_puede_traer_posiciones_con_saltos(maintenance_template):
+    maintenance_template["sections"][0]["position"] = 7
+    maintenance_template["sections"][0]["fields"][1]["position"] = 9
+
+    FormDefinitionInput.model_validate(maintenance_template)
+
+
+def test_la_definicion_confirmada_rechaza_secciones_con_saltos(maintenance_template):
+    maintenance_template["sections"][0]["position"] = 7
+
+    with pytest.raises(ValidationError, match="sin saltos"):
+        FormDefinition.model_validate(maintenance_template)
+
+
+def test_la_definicion_confirmada_rechaza_campos_con_saltos(maintenance_template):
+    maintenance_template["sections"][0]["fields"][1]["position"] = 9
+
+    with pytest.raises(ValidationError, match="sin saltos"):
+        FormDefinition.model_validate(maintenance_template)
+
+
 def test_rechaza_llaves_desconocidas(maintenance_template):
     maintenance_template["sections"][0]["fields"][0]["color"] = "rojo"
 

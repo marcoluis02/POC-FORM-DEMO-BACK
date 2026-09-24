@@ -40,3 +40,23 @@ def test_ordena_por_posicion_y_deja_posiciones_consecutivas(maintenance_template
     result = normalize_definition(FormDefinitionInput.model_validate(maintenance_template))
 
     assert [(field.id, field.position) for field in result.sections[0].fields] == [("f_002", 1), ("f_001", 2)]
+
+
+def test_posiciones_desordenadas_como_1_7_9_quedan_1_2_3(maintenance_template):
+    base_section = maintenance_template["sections"][0]
+    maintenance_template["sections"] = [
+        {**base_section, "id": "s_001", "title": "A", "position": 9},
+        {**base_section, "id": "s_002", "title": "B", "position": 1},
+        {**base_section, "id": "s_003", "title": "C", "position": 7},
+    ]
+    for index, section in enumerate(maintenance_template["sections"]):
+        section["fields"] = [
+            {**field, "id": f"f_{index}{number}0", "position": position}
+            for number, (field, position) in enumerate(zip(base_section["fields"], (7, 1), strict=True))
+        ]
+
+    result = normalize_definition(FormDefinitionInput.model_validate(maintenance_template))
+
+    assert [(s.title, s.position) for s in result.sections] == [("B", 1), ("C", 2), ("A", 3)]
+    for section in result.sections:
+        assert [field.position for field in section.fields] == [1, 2]

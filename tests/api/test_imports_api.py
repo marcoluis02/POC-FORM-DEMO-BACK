@@ -35,6 +35,18 @@ async def test_rechaza_archivos_que_no_son_foto_ni_pdf(client):
     assert response.json()["error"]["code"] == "unsupported_file_type"
 
 
+async def test_el_tipo_que_dice_el_navegador_no_cuenta(client):
+    # Imagen PNG disfrazada de PDF: se guarda como lo que realmente es
+    disguised = await client.post(IMPORTS_URL, files={"file": ("doc.pdf", PNG_BYTES, "application/pdf")})
+    # Texto disfrazado de imagen: se rechaza
+    fake_image = await client.post(IMPORTS_URL, files={"file": ("foto.png", b"no soy una foto", "image/png")})
+
+    assert disguised.status_code == 201
+    assert disguised.json()["mime_type"] == "image/png"
+    assert fake_image.status_code == 422
+    assert fake_image.json()["error"]["code"] == "unsupported_file_type"
+
+
 async def test_sin_archivo_da_422(client):
     response = await client.post(IMPORTS_URL)
 

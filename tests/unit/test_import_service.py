@@ -9,7 +9,8 @@ from app.core.exceptions import (
     StorageUnavailableError,
     ValidationError,
 )
-from tests.conftest import PDF_BYTES, PNG_BYTES, TEST_MAX_UPLOAD_BYTES
+from tests.conftest import PDF_BYTES, PNG_BYTES, TEST_MAX_PDF_PAGES, TEST_MAX_UPLOAD_BYTES
+from tests.fakes.sample_files import make_pdf
 
 
 async def test_guarda_el_archivo_y_crea_el_registro(import_service, fake_storage, fake_db):
@@ -50,6 +51,35 @@ async def test_rechaza_tipos_no_permitidos(import_service, fake_storage):
 
     assert error.value.code == "unsupported_file_type"
     assert fake_storage.put_calls == 0
+
+
+async def test_acepta_pdf_con_el_maximo_de_paginas(import_service):
+    result = await import_service.create_import("tres.pdf", make_pdf(pages=TEST_MAX_PDF_PAGES), None)
+
+    assert result.mime_type == "application/pdf"
+
+
+async def test_rechaza_pdf_con_demasiadas_paginas(import_service, fake_storage):
+    with pytest.raises(ValidationError) as error:
+        await import_service.create_import("largo.pdf", make_pdf(pages=TEST_MAX_PDF_PAGES + 1), None)
+
+    assert error.value.code == "pdf_too_many_pages"
+    assert str(TEST_MAX_PDF_PAGES + 1) in error.value.message
+    assert fake_storage.put_calls == 0
+
+
+async def test_rechaza_pdf_con_contrasena(import_service):
+    with pytest.raises(ValidationError) as error:
+        await import_service.create_import("secreto.pdf", make_pdf(pages=1, password="secreto"), None)
+
+    assert error.value.code == "pdf_protected"
+
+
+async def test_rechaza_pdf_danado_aunque_empiece_como_pdf(import_service):
+    with pytest.raises(ValidationError) as error:
+        await import_service.create_import("roto.pdf", b"%PDF-1.7\n" + b"\x00" * 64, None)
+
+    assert error.value.code == "pdf_unreadable"
 
 
 async def test_reintento_con_la_misma_llave_no_sube_dos_veces(import_service, fake_storage, fake_db):

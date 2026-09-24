@@ -11,14 +11,16 @@ from app.services.idempotency_service import IdempotencyService
 from app.services.import_service import ImportService
 from app.services.template_service import TemplateService
 from tests.fakes.fake_unit_of_work import FakeDatabase, FakeStorage, FakeUnitOfWork
+from tests.fakes.sample_files import PNG_BYTES, make_pdf
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 IDEMPOTENCY_TTL_HOURS = 24
-TEST_MAX_UPLOAD_BYTES = 2048
+TEST_MAX_UPLOAD_BYTES = 8192
+TEST_MAX_PDF_PAGES = 3
 
-# Primeros bytes reales de cada tipo de archivo
-PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
-PDF_BYTES = b"%PDF-1.7\n" + b"\x00" * 64
+PDF_BYTES = make_pdf(pages=1)
+
+__all__ = ["PDF_BYTES", "PNG_BYTES", "TEST_MAX_PDF_PAGES", "TEST_MAX_UPLOAD_BYTES"]
 
 
 @pytest.fixture(scope="session")
@@ -69,4 +71,4 @@ def fake_storage() -> FakeStorage:
 
 @pytest.fixture
 def import_service(uow_factory, idempotency_service, fake_storage) -> ImportService:
-    return ImportService(uow_factory, idempotency_service, fake_storage, TEST_MAX_UPLOAD_BYTES)
+    return ImportService(uow_factory, idempotency_service, fake_storage, TEST_MAX_UPLOAD_BYTES, TEST_MAX_PDF_PAGES)

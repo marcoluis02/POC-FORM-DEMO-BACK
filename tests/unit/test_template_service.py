@@ -22,6 +22,19 @@ async def test_crear_plantilla_crea_version_1(template_service, maintenance_temp
     assert len(fake_db.versions) == 1
 
 
+async def test_al_confirmar_se_guardan_posiciones_consecutivas(template_service, maintenance_template, fake_db):
+    maintenance_template["sections"][0]["position"] = 7
+    maintenance_template["sections"][0]["fields"][0]["position"] = 3
+    maintenance_template["sections"][0]["fields"][1]["position"] = 9
+
+    created = await template_service.create_template(_input(maintenance_template), None)
+
+    stored = next(iter(fake_db.versions.values())).definition_json
+    assert stored["sections"][0]["position"] == 1
+    assert [field["position"] for field in stored["sections"][0]["fields"]] == [1, 2]
+    assert created.current_version.definition.sections[0].position == 1
+
+
 async def test_consultar_plantilla_regresa_la_ultima_version(template_service, maintenance_template):
     created = await template_service.create_template(_input(maintenance_template), None)
 

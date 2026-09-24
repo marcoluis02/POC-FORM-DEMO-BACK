@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     s3_max_pool_connections: int = Field(gt=0)
     s3_timeout_seconds: int = Field(gt=0)
     max_upload_mb: int = Field(gt=0)
+    max_pdf_pages: int = Field(gt=0)
 
     @property
     def cors_origin_list(self) -> list[str]:

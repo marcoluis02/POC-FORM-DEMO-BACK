@@ -33,4 +33,7 @@ def get_template_service() -> TemplateService:
 
 
 def get_import_service() -> ImportService:
-    return ImportService(build_uow, get_idempotency_service(), get_storage(), get_settings().max_upload_bytes)
+    settings = get_settings()
+    return ImportService(
+        build_uow, get_idempotency_service(), get_storage(), settings.max_upload_bytes, settings.max_pdf_pages
+    )
