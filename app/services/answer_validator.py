@@ -32,7 +32,7 @@ def _clean_checkbox(value: Any) -> bool:
 
 
 def _clean_yes_no_na(value: Any) -> str:
-    if value not in {option.value for option in YesNoNa}:
+    if not isinstance(value, str) or value not in {option.value for option in YesNoNa}:
         raise InvalidAnswer("Elige Sí, No o No aplica.")
     return value
 
@@ -70,7 +70,7 @@ def _clean_date(value: Any) -> str:
 
 def _clean_select(value: Any, field: FieldDefinition) -> str:
     allowed = {option.value for option in field.options or []}
-    if value not in allowed:
+    if not isinstance(value, str) or value not in allowed:
         raise InvalidAnswer("Elige una de las opciones de la lista.")
     return value
 

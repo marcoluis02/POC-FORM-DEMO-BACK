@@ -33,6 +33,7 @@ class FakeDatabase:
         self.attachments: dict[uuid.UUID, Attachment] = {}
         self.worker_tasks: list[dict[str, Any]] = []
         self.commits = 0
+        self.fail_commit = False
 
     def version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion:
         return next(version for version in self.versions.values() if version.id == version_id)
@@ -269,6 +270,8 @@ class FakeUnitOfWork:
             items.clear()
 
     async def commit(self) -> None:
+        if self._db.fail_commit:
+            raise RuntimeError("La base de datos no respondió")
         for entity in self._pending["imports"]:
             self._db.imports[entity.id] = entity
         for template in self._pending["templates"]:

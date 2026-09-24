@@ -109,6 +109,16 @@ async def test_si_s3_falla_no_se_crea_el_registro(import_service, fake_storage, 
     assert fake_db.imports == {}
 
 
+async def test_si_la_bd_falla_despues_del_put_se_borra_el_archivo(import_service, fake_storage, fake_db):
+    fake_db.fail_commit = True
+
+    with pytest.raises(RuntimeError, match="base de datos"):
+        await import_service.create_import("revision.png", PNG_BYTES, None)
+
+    assert fake_db.imports == {}
+    assert fake_storage.objects == {}
+
+
 async def test_consulta_regresa_una_url_nueva(import_service):
     created = await import_service.create_import("revision.png", PNG_BYTES, None)
 
@@ -116,6 +126,10 @@ async def test_consulta_regresa_una_url_nueva(import_service):
 
     assert found.id == created.id
     assert found.original_url.startswith("https://storage.test/")
+    assert found.warnings == []
+    assert found.draft_json is None
+    assert found.error_code is None
+    assert found.error_message is None
 
 
 async def test_consulta_de_un_documento_que_no_existe(import_service):

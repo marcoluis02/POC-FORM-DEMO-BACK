@@ -79,6 +79,8 @@ def test_null_y_texto_vacio_cuentan_como_sin_contestar(definition):
     [
         ("f_001", "tal vez"),
         ("f_001", True),
+        ("f_001", {}),
+        ("f_001", []),
         ("f_002", "72"),
         ("f_002", True),
         ("f_002", NUMBER_MAX_ABS + 1),
@@ -96,6 +98,39 @@ def test_null_y_texto_vacio_cuentan_como_sin_contestar(definition):
 )
 def test_rechaza_valores_que_no_corresponden_al_tipo(definition, field_id, value):
     assert _errors(definition, {field_id: value}) == {field_id: "invalid_value"}
+
+
+@pytest.mark.parametrize("value", [{}, []])
+def test_select_rechaza_objetos_y_listas_sin_explotar(value):
+    definition = FormDefinition.model_validate(
+        {
+            "schema_version": 1,
+            "title": "Lista",
+            "sections": [
+                {
+                    "id": "s_001",
+                    "title": "General",
+                    "position": 1,
+                    "fields": [
+                        {
+                            "id": "f_010",
+                            "type": "select",
+                            "label": "Estado",
+                            "required": True,
+                            "position": 1,
+                            "allow_evidence": False,
+                            "options": [
+                                {"value": "ok", "label": "Bien"},
+                                {"value": "fail", "label": "Mal"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert _errors(definition, {"f_010": value}) == {"f_010": "invalid_value"}
 
 
 def test_rechaza_preguntas_que_no_existen(definition):
