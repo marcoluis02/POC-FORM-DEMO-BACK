@@ -1,6 +1,5 @@
 import pytest
 from asyncpg.exceptions import TooManyConnectionsError
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.dto.health import HealthOut
@@ -21,14 +20,6 @@ class FullPoolService:
 class TooManyClientsService:
     async def check(self) -> HealthOut:
         raise TooManyConnectionsError("sorry, too many clients already")
-
-
-@pytest.fixture
-async def client():
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
-        yield http_client
-    app.dependency_overrides.clear()
 
 
 async def test_health_responde_ok(client):

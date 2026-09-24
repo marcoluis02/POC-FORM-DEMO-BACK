@@ -1,0 +1,22 @@
+import uuid
+from datetime import datetime
+from typing import Protocol
+
+from app.models.form_template import FormTemplate
+from app.models.form_template_version import FormTemplateVersion
+
+
+class TemplatesRepositoryInterface(Protocol):
+    async def add(self, entity: FormTemplate) -> FormTemplate: ...
+
+    async def add_version(self, version: FormTemplateVersion) -> FormTemplateVersion: ...
+
+    async def get_for_update(self, template_id: uuid.UUID) -> FormTemplate | None: ...
+
+    async def get_with_latest_version(
+        self, template_id: uuid.UUID
+    ) -> tuple[FormTemplate, FormTemplateVersion] | None: ...
+
+    async def list_page(self, limit: int, after: tuple[datetime, uuid.UUID] | None) -> list[FormTemplate]: ...
+
+    async def get_version(self, template_id: uuid.UUID, version: int) -> FormTemplateVersion | None: ...

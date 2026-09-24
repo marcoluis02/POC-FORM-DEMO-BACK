@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
 from app.core.database import build_connect_args
-from app.models.base import Base
+
+# app.models es el registro: importa todos los modelos. Si solo se importara Base,
+# la metadata quedaría vacía y el autogenerate propondría borrar las tablas.
+from app.models import Base
 
 config = context.config
 if config.config_file_name is not None:
@@ -18,19 +21,35 @@ target_metadata = Base.metadata
 settings = get_settings()
 
 
+def skip_empty_revision(migration_context, revision, directives) -> None:
+    """Con --autogenerate, si no hay cambios en los modelos no se crea un archivo vacío."""
+    cmd_opts = config.cmd_opts
+    if not (cmd_opts and getattr(cmd_opts, "autogenerate", False)):
+        return
+    if directives and directives[0].upgrade_ops.is_empty():
+        directives[:] = []
+        print("No hay cambios en los modelos: no se creó ninguna migración.")
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url.render_as_string(hide_password=False),
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
+        process_revision_directives=skip_empty_revision,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        process_revision_directives=skip_empty_revision,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

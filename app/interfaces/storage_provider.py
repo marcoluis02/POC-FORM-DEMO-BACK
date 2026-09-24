@@ -1,0 +1,9 @@
+from typing import Protocol
+
+
+class StorageProvider(Protocol):
+    """Dónde viven los archivos. La BD solo guarda la key, nunca URLs."""
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def get_url(self, key: str) -> str: ...

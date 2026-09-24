@@ -95,7 +95,23 @@ class SectionDefinition(SectionInput):
     fields: list[FieldDefinition] = Field(min_length=1, max_length=MAX_FIELDS_PER_SECTION)
 
 
+def is_consecutive(positions: list[int]) -> bool:
+    return positions == list(range(1, len(positions) + 1))
+
+
 class FormDefinition(FormDefinitionInput):
-    """Definición confirmada: todas las secciones y campos ya tienen id estable."""
+    """Definición confirmada: todas las secciones y campos ya tienen id estable
+    y sus posiciones son consecutivas (1, 2, 3...). normalize_definition la deja así."""
 
     sections: list[SectionDefinition] = Field(min_length=1, max_length=MAX_SECTIONS)
+
+    @model_validator(mode="after")
+    def positions_are_consecutive(self):
+        if not is_consecutive([s.position for s in self.sections]):
+            raise ValueError("Las secciones deben tener posiciones 1, 2, 3... sin saltos.")
+        for section in self.sections:
+            if not is_consecutive([f.position for f in section.fields]):
+                raise ValueError(
+                    f"Los campos de la sección '{section.title}' deben tener posiciones 1, 2, 3... sin saltos."
+                )
+        return self
