@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 
-from app.core.exceptions import ConflictError, DomainError, NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.domain.answer_rules import PHOTO_MIME_TYPES
 from app.domain.response_status import ResponseStatus
 from app.domain.worker_task_type import WorkerTaskType
@@ -219,13 +219,11 @@ class ResponseService:
         return uuid.uuid5(UPLOAD_NAMESPACE, f"{idempotency_key}:{stable_hash(request_payload)}")
 
     async def _discard_file(self, file_key: str) -> None:
-        """El archivo ya subió pero no se registró: el worker lo borra de S3."""
+        """El archivo ya subió pero no se registró: se borra de S3 al momento."""
         try:
-            async with self._uow_factory() as uow:
-                await enqueue_task(uow, WorkerTaskType.DELETE_STORAGE_OBJECT, {"key": file_key})
-                await uow.commit()
+            await self._storage.delete(file_key)
         except Exception:
-            logger.exception("No se pudo programar el borrado de %s", file_key)
+            logger.exception("No se pudo borrar el archivo huérfano %s", file_key)
 
     async def add_attachment(
         self,
@@ -268,7 +266,13 @@ class ResponseService:
                 operation=operation,
                 response_model=AttachmentRecord,
             )
-        except DomainError:
+        except ConflictError as error:
+            # Misma llave con otros datos: este put quedó huérfano y sí se borra.
+            # Si otra petición igual aún está guardando, no borramos: puede ser la misma key.
+            if error.code == "idempotency_key_reused":
+                await self._discard_file(file_key)
+            raise
+        except Exception:
             await self._discard_file(file_key)
             raise
         return await to_attachment_out(record, self._storage)

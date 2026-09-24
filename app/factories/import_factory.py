@@ -19,14 +19,7 @@ def build_import(filename: str, mime_type: DocumentMimeType) -> FormImport:
 
 
 def to_import_record(entity: FormImport) -> ImportRecord:
-    return ImportRecord(
-        id=entity.id,
-        status=entity.status,
-        original_file_key=entity.original_file_key,
-        original_filename=entity.original_filename,
-        mime_type=entity.mime_type,
-        created_at=entity.created_at,
-    )
+    return ImportRecord.model_validate(entity)
 
 
 def to_import_out(record: ImportRecord, original_url: str) -> ImportOut:

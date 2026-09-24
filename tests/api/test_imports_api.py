@@ -70,7 +70,38 @@ async def test_consulta_el_documento(client):
     response = await client.get(f"{IMPORTS_URL}/{created['id']}")
 
     assert response.status_code == 200
-    assert response.json()["id"] == created["id"]
+    body = response.json()
+    assert body["id"] == created["id"]
+    assert body["status"] == "received"
+    assert body["warnings"] == []
+    assert body["draft_json"] is None
+    assert body["error_code"] is None
+    assert body["error_message"] is None
+    assert "original_file_key" not in body
+    assert "original_url" in body
+
+
+async def test_el_get_incluye_draft_warnings_y_error_si_existen(import_service, fake_db, client):
+    created = (await client.post(IMPORTS_URL, files={"file": ("r.png", PNG_BYTES, "image/png")})).json()
+    entity = fake_db.imports[uuid.UUID(created["id"])]
+    entity.status = "requires_review"
+    entity.draft_json = {"schema_version": 1, "title": "Borrador IA", "sections": []}
+    entity.warnings = [{"code": "low_confidence", "message": "Revisa esta pregunta"}]
+    entity.error_code = None
+    entity.error_message = None
+    entity.page_count = 1
+    entity.detected_fields_count = 3
+
+    response = await client.get(f"{IMPORTS_URL}/{created['id']}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "requires_review"
+    assert body["draft_json"]["title"] == "Borrador IA"
+    assert body["warnings"][0]["code"] == "low_confidence"
+    assert body["page_count"] == 1
+    assert body["detected_fields_count"] == 3
+    assert body["error_code"] is None
 
 
 async def test_consulta_de_documento_inexistente_da_404(client):

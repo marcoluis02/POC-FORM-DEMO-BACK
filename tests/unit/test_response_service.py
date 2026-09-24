@@ -217,17 +217,17 @@ async def test_reintentar_la_subida_con_la_misma_llave_no_duplica(response_servi
     assert len(fake_storage.objects) == 1
 
 
-async def test_si_el_registro_falla_se_programa_borrar_el_archivo(response_service, draft, fake_storage, fake_db):
+async def test_si_el_registro_falla_se_borra_el_archivo_de_s3(response_service, draft, fake_storage, fake_db):
     await _add_photo(response_service, draft.id, key="foto-1")
+    keys_antes = set(fake_storage.objects)
 
     # Misma llave con otra pregunta: el archivo nuevo ya subió pero no se registra
     with pytest.raises(ConflictError):
         await _add_photo(response_service, draft.id, field_id="f_001", key="foto-1")
 
-    assert len(fake_storage.objects) == 2
-    assert len(fake_db.pending_deletes()) == 1
-    assert fake_db.pending_deletes()[0] in fake_storage.objects
-
+    # El put fallido se borró al momento; solo queda la foto que sí se registró
+    assert set(fake_storage.objects) == keys_antes
+    assert fake_db.pending_deletes() == []
 
 async def test_quitar_foto_la_borra_y_programa_borrar_el_archivo(response_service, draft, fake_db):
     photo = await _add_photo(response_service, draft.id)
