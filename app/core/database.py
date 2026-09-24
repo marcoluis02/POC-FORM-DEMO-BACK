@@ -32,11 +32,11 @@ def build_connect_args(settings: Settings) -> dict:
     }
 
 
-def build_engine(settings: Settings) -> AsyncEngine:
+def build_engine(settings: Settings, pool_size: int, max_overflow: int) -> AsyncEngine:
     return create_async_engine(
         settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
         pool_timeout=settings.db_pool_timeout_seconds,
         pool_recycle=settings.db_pool_recycle_seconds,
         pool_pre_ping=True,
@@ -46,13 +46,18 @@ def build_engine(settings: Settings) -> AsyncEngine:
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    """Un solo engine (y un solo pool) por proceso. Se crea la primera vez que se usa."""
-    return build_engine(get_settings())
+    """Un solo engine (y un solo pool) por proceso para la API. Se crea la primera vez que se usa."""
+    settings = get_settings()
+    return build_engine(settings, settings.db_pool_size, settings.db_max_overflow)
+
+
+def build_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
 
 @lru_cache
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(get_engine(), expire_on_commit=False, autoflush=False)
+    return build_session_factory(get_engine())
 
 
 async def dispose_engine() -> None:

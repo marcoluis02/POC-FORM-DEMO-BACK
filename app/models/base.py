@@ -1,4 +1,6 @@
-from sqlalchemy import MetaData
+from enum import StrEnum
+
+from sqlalchemy import CheckConstraint, MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 # Nombres fijos para índices y constraints, así Alembic genera migraciones estables
@@ -13,3 +15,9 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+def enum_check(column: str, enum_cls: type[StrEnum], name: str) -> CheckConstraint:
+    """Limita una columna de texto a los valores del enum."""
+    allowed = ", ".join(f"'{item.value}'" for item in enum_cls)
+    return CheckConstraint(f"{column} IN ({allowed})", name=name)

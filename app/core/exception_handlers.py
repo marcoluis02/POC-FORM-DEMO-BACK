@@ -6,7 +6,14 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.database import DATABASE_UNAVAILABLE_ERRORS
-from app.core.exceptions import ConflictError, DomainError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    DomainError,
+    NotFoundError,
+    PayloadTooLargeError,
+    StorageUnavailableError,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +21,20 @@ STATUS_BY_ERROR: dict[type[DomainError], int] = {
     NotFoundError: status.HTTP_404_NOT_FOUND,
     ValidationError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ConflictError: status.HTTP_409_CONFLICT,
+    PayloadTooLargeError: status.HTTP_413_CONTENT_TOO_LARGE,
+    StorageUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
-HTTP_ERROR_MESSAGES: dict[int, tuple[str, str]] = {
-    status.HTTP_404_NOT_FOUND: ("not_found", "No encontramos lo que buscas."),
-    status.HTTP_405_METHOD_NOT_ALLOWED: ("method_not_allowed", "Esta acción no está permitida."),
+HTTP_ERROR_CODES: dict[int, str] = {
+    status.HTTP_404_NOT_FOUND: "not_found",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
+    status.HTTP_413_CONTENT_TOO_LARGE: "file_too_large",
+}
+
+# Si el status no está aquí se usa el detail de la excepción como mensaje
+HTTP_ERROR_MESSAGES: dict[int, str] = {
+    status.HTTP_404_NOT_FOUND: "No encontramos lo que buscas.",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "Esta acción no está permitida.",
 }
 
 
@@ -49,7 +65,8 @@ async def request_validation_handler(_: Request, exc: RequestValidationError) ->
 
 
 async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-    code, message = HTTP_ERROR_MESSAGES.get(exc.status_code, ("http_error", str(exc.detail)))
+    code = HTTP_ERROR_CODES.get(exc.status_code, "http_error")
+    message = HTTP_ERROR_MESSAGES.get(exc.status_code, str(exc.detail))
     return JSONResponse(status_code=exc.status_code, content=error_body(code, message), headers=exc.headers)
 
 

@@ -30,3 +30,15 @@ class ValidationError(DomainError):
 
 class ConflictError(DomainError):
     default_code = "conflict"
+
+
+class PayloadTooLargeError(DomainError):
+    default_code = "file_too_large"
+
+
+class StorageUnavailableError(DomainError):
+    default_code = "storage_unavailable"
+
+
+class IdempotencyKeyTakenError(Exception):
+    """Otra petición con la misma Idempotency-Key se guardó primero (llegaron al mismo tiempo)."""
