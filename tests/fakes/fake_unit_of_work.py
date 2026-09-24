@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Any
 
 from app.core.exceptions import IdempotencyKeyTakenError, StorageUnavailableError
+from app.models.attachment import Attachment
 from app.models.form_import import FormImport
+from app.models.form_response import FormResponse
 from app.models.form_template import FormTemplate
 from app.models.form_template_version import FormTemplateVersion
 from app.models.idempotency_key import IdempotencyKey
@@ -27,8 +29,21 @@ class FakeDatabase:
         self.templates: dict[uuid.UUID, FormTemplate] = {}
         self.versions: dict[tuple[uuid.UUID, int], FormTemplateVersion] = {}
         self.idempotency: dict[tuple[str, str], IdempotencyKey] = {}
+        self.responses: dict[uuid.UUID, FormResponse] = {}
+        self.attachments: dict[uuid.UUID, Attachment] = {}
         self.worker_tasks: list[dict[str, Any]] = []
         self.commits = 0
+
+    def version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion:
+        return next(version for version in self.versions.values() if version.id == version_id)
+
+    def pending_deletes(self) -> list[str]:
+        """Keys de S3 que el worker tiene que borrar."""
+        return [
+            task["payload"]["key"]
+            for task in self.worker_tasks
+            if task["action"] == "enqueue" and task["task_type"] == "delete_storage_object"
+        ]
 
 
 class FakeStorage:
@@ -44,6 +59,11 @@ class FakeStorage:
         if self.fail:
             raise StorageUnavailableError("S3 no responde")
         self.objects[key] = (data, content_type)
+
+    async def delete(self, key: str) -> None:
+        if self.fail:
+            raise StorageUnavailableError("S3 no responde")
+        self.objects.pop(key, None)
 
     async def get_url(self, key: str) -> str:
         return f"https://storage.test/{key}?firma=temporal"
@@ -101,6 +121,67 @@ class FakeTemplatesRepository:
 
     async def get_version(self, template_id: uuid.UUID, version: int) -> FormTemplateVersion | None:
         return self._db.versions.get((template_id, version))
+
+
+class FakeResponsesRepository:
+    def __init__(self, pending: dict[str, list[Any]], db: FakeDatabase):
+        self._pending = pending
+        self._db = db
+
+    async def add(self, entity: FormResponse) -> FormResponse:
+        _stamp(entity)
+        self._pending["responses"].append(entity)
+        return entity
+
+    async def update(self, entity: FormResponse) -> FormResponse:
+        entity.updated_at = utc_now()
+        self._pending["responses"].append(entity)
+        return entity
+
+    async def get_with_version_number(self, response_id: uuid.UUID):
+        response = self._db.responses.get(response_id)
+        return (response, self._db.version_by_id(response.template_version_id).version) if response else None
+
+    async def get_with_version(self, response_id: uuid.UUID, *, lock: bool = False):
+        response = self._db.responses.get(response_id)
+        return (response, self._db.version_by_id(response.template_version_id)) if response else None
+
+    async def list_page(self, template_id: uuid.UUID, limit: int, after):
+        rows = sorted(
+            (item for item in self._db.responses.values() if item.template_id == template_id),
+            key=lambda item: (item.created_at, item.id),
+            reverse=True,
+        )
+        if after is not None:
+            rows = [row for row in rows if (row.created_at, row.id) < after]
+        return [(row, self._db.version_by_id(row.template_version_id).version) for row in rows[:limit]]
+
+
+class FakeAttachmentsRepository:
+    def __init__(self, pending: dict[str, list[Any]], db: FakeDatabase):
+        self._pending = pending
+        self._db = db
+
+    async def add(self, entity: Attachment) -> Attachment:
+        _stamp(entity)
+        self._pending["attachments"].append(entity)
+        return entity
+
+    async def delete(self, entity: Attachment) -> None:
+        self._pending["attachments_deleted"].append(entity)
+
+    def _of_response(self, response_id: uuid.UUID) -> list[Attachment]:
+        return [item for item in self._db.attachments.values() if item.response_id == response_id]
+
+    async def list_for_response(self, response_id: uuid.UUID) -> list[Attachment]:
+        return sorted(self._of_response(response_id), key=lambda item: (item.created_at, item.id))
+
+    async def count_for_field(self, response_id: uuid.UUID, field_id: str) -> int:
+        return sum(1 for item in self._of_response(response_id) if item.field_id == field_id)
+
+    async def get_for_response(self, response_id: uuid.UUID, attachment_id: uuid.UUID) -> Attachment | None:
+        item = self._db.attachments.get(attachment_id)
+        return item if item and item.response_id == response_id else None
 
 
 class FakeIdempotencyRepository:
@@ -168,10 +249,15 @@ class FakeUnitOfWork:
             "templates": [],
             "versions": [],
             "idempotency": [],
+            "responses": [],
+            "attachments": [],
+            "attachments_deleted": [],
             "worker_tasks": [],
         }
         self.imports = FakeImportsRepository(self._pending, db)
         self.templates = FakeTemplatesRepository(self._pending, db)
+        self.responses = FakeResponsesRepository(self._pending, db)
+        self.attachments = FakeAttachmentsRepository(self._pending, db)
         self.idempotency = FakeIdempotencyRepository(self._pending, db)
         self.worker_tasks = FakeWorkerTasksRepository(self._pending, db)
 
@@ -191,6 +277,12 @@ class FakeUnitOfWork:
             self._db.versions[(version.template_id, version.version)] = version
         for item in self._pending["idempotency"]:
             self._db.idempotency[(item.idempotency_key, item.scope)] = item
+        for response in self._pending["responses"]:
+            self._db.responses[response.id] = response
+        for attachment in self._pending["attachments"]:
+            self._db.attachments[attachment.id] = attachment
+        for attachment in self._pending["attachments_deleted"]:
+            self._db.attachments.pop(attachment.id, None)
         for action, task in self._pending["worker_tasks"]:
             self._db.worker_tasks.append({"action": action, **task})
         for items in self._pending.values():

@@ -20,8 +20,8 @@ def _task(attempts: int = 1):
 
 
 @pytest.fixture
-def context(uow_factory):
-    return TaskContext(uow_factory=uow_factory, settings=get_settings())
+def context(uow_factory, fake_storage):
+    return TaskContext(uow_factory=uow_factory, settings=get_settings(), storage=fake_storage)
 
 
 @pytest.fixture
@@ -63,6 +63,22 @@ async def test_ultimo_intento_fallido_queda_en_error_y_se_reprograma(runner, con
 
     assert _actions(fake_db) == ["failed", "enqueue"]
     assert fake_db.worker_tasks[0]["retry_at"] is None
+
+
+async def test_tarea_de_borrar_archivo_lo_quita_del_storage(runner, context, fake_db, fake_storage):
+    fake_storage.objects["responses/r/foto.png"] = (b"x", "image/png")
+    task = SimpleNamespace(
+        id=uuid.uuid4(),
+        task_type=WorkerTaskType.DELETE_STORAGE_OBJECT,
+        payload={"key": "responses/r/foto.png"},
+        attempts=1,
+        dedupe_key=None,
+    )
+
+    await runner._process_task(task, context)
+
+    assert fake_storage.objects == {}
+    assert _actions(fake_db) == ["completed"]
 
 
 async def test_tarea_sin_handler_queda_con_error(runner, context, fake_db):

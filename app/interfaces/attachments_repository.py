@@ -1,0 +1,16 @@
+import uuid
+from typing import Protocol
+
+from app.models.attachment import Attachment
+
+
+class AttachmentsRepositoryInterface(Protocol):
+    async def add(self, entity: Attachment) -> Attachment: ...
+
+    async def delete(self, entity: Attachment) -> None: ...
+
+    async def list_for_response(self, response_id: uuid.UUID) -> list[Attachment]: ...
+
+    async def count_for_field(self, response_id: uuid.UUID, field_id: str) -> int: ...
+
+    async def get_for_response(self, response_id: uuid.UUID, attachment_id: uuid.UUID) -> Attachment | None: ...

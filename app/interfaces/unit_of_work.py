@@ -1,8 +1,10 @@
 from collections.abc import Callable
 from typing import Protocol, Self
 
+from app.interfaces.attachments_repository import AttachmentsRepositoryInterface
 from app.interfaces.idempotency_repository import IdempotencyRepositoryInterface
 from app.interfaces.imports_repository import ImportsRepositoryInterface
+from app.interfaces.responses_repository import ResponsesRepositoryInterface
 from app.interfaces.templates_repository import TemplatesRepositoryInterface
 from app.interfaces.worker_tasks_repository import WorkerTasksRepositoryInterface
 
@@ -10,6 +12,8 @@ from app.interfaces.worker_tasks_repository import WorkerTasksRepositoryInterfac
 class UnitOfWorkInterface(Protocol):
     imports: ImportsRepositoryInterface
     templates: TemplatesRepositoryInterface
+    responses: ResponsesRepositoryInterface
+    attachments: AttachmentsRepositoryInterface
     idempotency: IdempotencyRepositoryInterface
     worker_tasks: WorkerTasksRepositoryInterface
 

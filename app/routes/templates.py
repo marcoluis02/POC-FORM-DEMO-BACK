@@ -8,7 +8,7 @@ from app.dto.common import ErrorResponseOut
 from app.dto.form_definition import FormDefinitionInput
 from app.dto.templates import TemplateOut, TemplatePageOut, TemplateVersionOut
 from app.factories.services_factory import get_template_service
-from app.routes.dependencies import IdempotencyKeyHeader
+from app.routes.dependencies import CursorQuery, IdempotencyKeyHeader
 from app.services.template_service import TemplateService
 
 settings = get_settings()
@@ -16,7 +16,6 @@ router = APIRouter(prefix=f"{settings.api_prefix}/templates", tags=["templates"]
 
 ServiceDep = Annotated[TemplateService, Depends(get_template_service)]
 ERRORS = {code: {"model": ErrorResponseOut} for code in (404, 409, 422, 429, 503)}
-CURSOR_MAX_LENGTH = 500
 # Documento original (lo regresa POST /imports). Opcional para no romper a quien no lo manda.
 SourceImportQuery = Annotated[uuid.UUID | None, Query()]
 
@@ -25,7 +24,7 @@ SourceImportQuery = Annotated[uuid.UUID | None, Query()]
 async def list_templates(
     service: ServiceDep,
     limit: Annotated[int, Query(ge=1, le=settings.pagination_max_limit)] = settings.pagination_default_limit,
-    cursor: Annotated[str | None, Query(min_length=1, max_length=CURSOR_MAX_LENGTH)] = None,
+    cursor: CursorQuery = None,
 ) -> TemplatePageOut:
     return await service.list_templates(limit, cursor)
 

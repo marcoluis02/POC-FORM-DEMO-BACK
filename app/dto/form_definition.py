@@ -2,15 +2,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.domain.field_types import UNIT_FIELD_TYPES, FieldType
+from app.domain.field_types import OPTION_FIELD_TYPES, UNIT_FIELD_TYPES, FieldType
 
 SECTION_ID_PATTERN = r"^s_\d{3,6}$"
 FIELD_ID_PATTERN = r"^f_\d{3,6}$"
 TITLE_MAX_LENGTH = 200
 LABEL_MAX_LENGTH = 300
 UNIT_MAX_LENGTH = 20
+OPTION_VALUE_MAX_LENGTH = 100
+OPTION_LABEL_MAX_LENGTH = 200
 MAX_SECTIONS = 50
 MAX_FIELDS_PER_SECTION = 200
+MIN_OPTIONS = 2
+MAX_OPTIONS = 30
 
 
 class StrictModel(BaseModel):
@@ -28,6 +32,13 @@ def find_repeated(values: list) -> list:
     return repeated
 
 
+class FieldOption(StrictModel):
+    """Una opción de una pregunta tipo lista (select)."""
+
+    value: str = Field(min_length=1, max_length=OPTION_VALUE_MAX_LENGTH)
+    label: str = Field(min_length=1, max_length=OPTION_LABEL_MAX_LENGTH)
+
+
 class FieldInput(StrictModel):
     id: str | None = Field(default=None, pattern=FIELD_ID_PATTERN)
     type: FieldType
@@ -36,6 +47,8 @@ class FieldInput(StrictModel):
     position: int = Field(ge=1)
     allow_evidence: bool = False
     unit: str | None = Field(default=None, max_length=UNIT_MAX_LENGTH)
+    # Solo aplica a type=select. En el resto debe ir vacío o no mandarse.
+    options: list[FieldOption] | None = None
 
     @field_validator("unit", mode="before")
     @classmethod
@@ -44,10 +57,30 @@ class FieldInput(StrictModel):
             return None
         return value
 
+    @field_validator("options", mode="before")
+    @classmethod
+    def empty_options_are_none(cls, value):
+        if value is None or value == []:
+            return None
+        return value
+
     @model_validator(mode="after")
-    def unit_only_for_numbers(self):
+    def unit_and_options_match_type(self):
         if self.unit is not None and self.type not in UNIT_FIELD_TYPES:
             raise ValueError("La unidad solo aplica a campos de tipo número.")
+
+        if self.type in OPTION_FIELD_TYPES:
+            if self.options is None:
+                raise ValueError("Las preguntas de lista necesitan al menos 2 opciones.")
+            if len(self.options) < MIN_OPTIONS:
+                raise ValueError(f"Las preguntas de lista necesitan al menos {MIN_OPTIONS} opciones.")
+            if len(self.options) > MAX_OPTIONS:
+                raise ValueError(f"Una pregunta de lista no puede tener más de {MAX_OPTIONS} opciones.")
+            repeated = find_repeated([option.value for option in self.options])
+            if repeated:
+                raise ValueError(f"Hay opciones con el mismo valor: {', '.join(repeated)}.")
+        elif self.options is not None:
+            raise ValueError("Las opciones solo aplican a preguntas de tipo lista (select).")
         return self
 
 

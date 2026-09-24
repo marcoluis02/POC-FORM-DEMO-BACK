@@ -57,6 +57,15 @@ class S3Storage:
             logger.warning("S3 put falló para %s: %s", key, type(exc).__name__)
             raise StorageUnavailableError(STORAGE_FAILED) from exc
 
+    async def delete(self, key: str) -> None:
+        """Si el archivo ya no existe S3 responde bien igual, así que reintentar no hace daño."""
+        client = self._require_client()
+        try:
+            await asyncio.to_thread(client.delete_object, Bucket=self._bucket, Key=key)
+        except (BotoCoreError, ClientError) as exc:
+            logger.warning("S3 delete falló para %s: %s", key, type(exc).__name__)
+            raise StorageUnavailableError(STORAGE_FAILED) from exc
+
     async def get_url(self, key: str) -> str:
         """URL temporal para ver el archivo. Firmar no hace llamadas de red."""
         client = self._require_client()

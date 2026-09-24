@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "title": "Inspeccion completa",
+  "sections": [
+    {
+      "id": "s_001",
+      "title": "Revision",
+      "position": 1,
+      "fields": [
+        { "id": "f_001", "type": "yes_no_na", "label": "Se limpio el filtro?", "required": true, "position": 1, "allow_evidence": true },
+        { "id": "f_002", "type": "number", "label": "Temperatura final", "unit": "F", "required": false, "position": 2, "allow_evidence": false },
+        { "id": "f_003", "type": "checkbox", "label": "Confirmo que el equipo quedo apagado", "required": true, "position": 3, "allow_evidence": false },
+        { "id": "f_004", "type": "short_text", "label": "Nombre del tecnico", "required": true, "position": 4, "allow_evidence": false },
+        { "id": "f_005", "type": "long_text", "label": "Observaciones", "required": false, "position": 5, "allow_evidence": false },
+        { "id": "f_006", "type": "date", "label": "Fecha de la visita", "required": false, "position": 6, "allow_evidence": false }
+      ]
+    },
+    {
+      "id": "s_002",
+      "title": "Evidencia",
+      "position": 2,
+      "fields": [
+        { "id": "f_007", "type": "photo", "label": "Foto del equipo", "required": true, "position": 1, "allow_evidence": false },
+        { "id": "f_008", "type": "signature_placeholder", "label": "Firma del cliente", "required": true, "position": 2, "allow_evidence": false }
+      ]
+    }
+  ]
+}

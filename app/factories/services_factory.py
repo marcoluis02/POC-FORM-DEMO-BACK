@@ -7,6 +7,7 @@ from app.core.unit_of_work import UnitOfWork
 from app.services.health_service import HealthService
 from app.services.idempotency_service import IdempotencyService
 from app.services.import_service import ImportService
+from app.services.response_service import ResponseService
 from app.services.template_service import TemplateService
 
 
@@ -36,4 +37,11 @@ def get_import_service() -> ImportService:
     settings = get_settings()
     return ImportService(
         build_uow, get_idempotency_service(), get_storage(), settings.max_upload_bytes, settings.max_pdf_pages
+    )
+
+
+def get_response_service() -> ResponseService:
+    settings = get_settings()
+    return ResponseService(
+        build_uow, get_idempotency_service(), get_storage(), settings.max_upload_bytes, settings.max_photos_per_field
     )
