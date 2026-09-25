@@ -37,12 +37,13 @@ class ExtractionResult:
 
 
 class ExtractionProviderError(Exception):
-    """Error técnico del proveedor, con un código/mensaje seguro para persistir."""
+    """Error técnico del proveedor con un código seguro y política explícita de retry."""
 
-    def __init__(self, code: str, public_message: str):
+    def __init__(self, code: str, public_message: str, *, retryable: bool = False):
         super().__init__(public_message)
         self.code = code
         self.public_message = public_message
+        self.retryable = retryable
 
 
 class ExtractionProvider(Protocol):

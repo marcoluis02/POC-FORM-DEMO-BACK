@@ -1,6 +1,7 @@
 import uuid
 
 from app.core.exceptions import ErrorDetail, NotFoundError, ValidationError
+from app.domain.import_status import ImportStatus
 from app.dto.form_definition import FormDefinition, FormDefinitionInput
 from app.dto.templates import TemplateOut, TemplatePageOut, TemplateVersionOut
 from app.factories.template_factory import (
@@ -19,6 +20,7 @@ from app.utils.cursor import decode_cursor, encode_cursor
 
 TEMPLATE_NOT_FOUND = "No encontramos esta plantilla."
 INVALID_CURSOR = "El enlace de la página no es válido. Vuelve a cargar el listado."
+SOURCE_IMPORT_NOT_READY = "El documento todavía no tiene un borrador listo para confirmar."
 
 
 class TemplateService:
@@ -36,6 +38,12 @@ class TemplateService:
                 IMPORT_NOT_FOUND,
                 code="source_import_not_found",
                 details=[ErrorDetail("not_found", IMPORT_NOT_FOUND, field_id="source_import_id")],
+            )
+        if source_import.status != ImportStatus.REQUIRES_REVIEW or source_import.draft_json is None:
+            raise ValidationError(
+                SOURCE_IMPORT_NOT_READY,
+                code="source_import_not_ready",
+                details=[ErrorDetail("not_ready", SOURCE_IMPORT_NOT_READY, field_id="source_import_id")],
             )
         return source_import
 

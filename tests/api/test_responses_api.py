@@ -20,13 +20,26 @@ def use_fake_services(response_service, template_service):
 
 
 @pytest.fixture
-async def template_id(client, inspection_template) -> str:
-    return (await client.post(TEMPLATES_URL, json=inspection_template)).json()["id"]
+async def template_data(client, inspection_template) -> dict:
+    return (await client.post(TEMPLATES_URL, json=inspection_template)).json()
 
 
 @pytest.fixture
-async def response_id(client, template_id) -> str:
-    created = await client.post(RESPONSES_URL, json={"template_id": template_id, "name": DEFAULT_NAME})
+async def template_id(template_data) -> str:
+    return template_data["id"]
+
+
+@pytest.fixture
+async def template_version_id(template_data) -> str:
+    return template_data["current_version"]["id"]
+
+
+@pytest.fixture
+async def response_id(client, template_version_id) -> str:
+    created = await client.post(
+        RESPONSES_URL,
+        json={"template_version_id": template_version_id, "name": DEFAULT_NAME},
+    )
     return created.json()["id"]
 
 
@@ -38,8 +51,8 @@ async def _upload(client, response_id, field_id="f_007", content=PNG_BYTES):
     )
 
 
-async def test_flujo_completo_borrador_recarga_y_envio(client, template_id):
-    created = await client.post(RESPONSES_URL, json={"template_id": template_id, "name": "Llenado 1"})
+async def test_flujo_completo_borrador_recarga_y_envio(client, template_version_id):
+    created = await client.post(RESPONSES_URL, json={"template_version_id": template_version_id, "name": "Llenado 1"})
     response_id = created.json()["id"]
 
     saved = await client.put(
@@ -72,8 +85,35 @@ async def test_flujo_completo_borrador_recarga_y_envio(client, template_id):
     assert submitted.json()["submitted_at"] is not None
 
 
-async def test_sin_nombre_al_crear_da_422(client, template_id):
-    response = await client.post(RESPONSES_URL, json={"template_id": template_id})
+async def test_creacion_respeta_version_exacta_aunque_exista_otra(
+    client, template_data, inspection_template
+):
+    template_id = template_data["id"]
+    v1_id = template_data["current_version"]["id"]
+
+    v2 = await client.post(
+        f"{TEMPLATES_URL}/{template_id}/versions",
+        json=inspection_template,
+    )
+    assert v2.status_code == 201
+
+    created = await client.post(
+        RESPONSES_URL,
+        json={
+            "template_version_id": v1_id,
+            "name": "Respuesta sobre v1",
+            "job_demo_id": "job-123",
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["version"] == 1
+    assert created.json()["template_version_id"] == v1_id
+    assert created.json()["job_demo_id"] == "job-123"
+
+
+async def test_sin_nombre_al_crear_da_422(client, template_version_id):
+    response = await client.post(RESPONSES_URL, json={"template_version_id": template_version_id})
 
     assert response.status_code == 422
 
@@ -131,9 +171,12 @@ async def test_quitar_foto(client, response_id):
     assert detail.json()["attachments"] == []
 
 
-async def test_listado_paginado_por_plantilla(client, template_id):
+async def test_listado_paginado_por_plantilla(client, template_id, template_version_id):
     for index in range(3):
-        await client.post(RESPONSES_URL, json={"template_id": template_id, "name": f"Llenado {index}"})
+        await client.post(
+            RESPONSES_URL,
+            json={"template_version_id": template_version_id, "name": f"Llenado {index}"},
+        )
 
     first = await client.get(RESPONSES_URL, params={"template_id": template_id, "limit": 2})
     second = await client.get(

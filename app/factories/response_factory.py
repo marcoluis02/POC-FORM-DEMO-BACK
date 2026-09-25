@@ -16,11 +16,12 @@ from app.models.form_response import FormResponse
 from app.models.form_template_version import FormTemplateVersion
 
 
-def build_response(version: FormTemplateVersion, name: str) -> FormResponse:
+def build_response(version: FormTemplateVersion, name: str, job_demo_id: str | None = None) -> FormResponse:
     return FormResponse(
         id=uuid.uuid4(),
         template_id=version.template_id,
         template_version_id=version.id,
+        job_demo_id=job_demo_id,
         name=name,
         status=ResponseStatus.DRAFT,
         values_json={},
@@ -62,6 +63,7 @@ def to_response_record(response: FormResponse, version: int, attachments: list[A
         template_id=response.template_id,
         template_version_id=response.template_version_id,
         version=version,
+        job_demo_id=response.job_demo_id,
         name=response.name,
         status=response.status,
         values=response.values_json,

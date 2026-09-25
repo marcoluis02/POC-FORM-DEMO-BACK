@@ -1,14 +1,24 @@
+import copy
 import uuid
 
 import pytest
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.domain.import_status import ImportStatus
 from app.dto.form_definition import FormDefinitionInput
+from app.services.definition_normalizer import normalize_definition
 from tests.conftest import PNG_BYTES
 
 
 def _input(data: dict) -> FormDefinitionInput:
     return FormDefinitionInput.model_validate(data)
+
+
+def _mark_import_ready(fake_db, document, definition_data: dict) -> None:
+    entity = fake_db.imports[document.id]
+    entity.status = ImportStatus.REQUIRES_REVIEW
+    entity.draft_json = normalize_definition(_input(definition_data)).model_dump(mode="json")
+    entity.corrections_count = 0
 
 
 async def test_crear_plantilla_crea_version_1(template_service, maintenance_template, fake_db):
@@ -132,12 +142,48 @@ async def test_claves_distintas_crean_plantillas_distintas(template_service, mai
     assert len(fake_db.templates) == 2
 
 
-async def test_crear_plantilla_con_documento_original(template_service, import_service, maintenance_template):
+async def test_crear_plantilla_con_documento_original(template_service, import_service, maintenance_template, fake_db):
     document = await import_service.create_import("revision.png", PNG_BYTES, None)
+    _mark_import_ready(fake_db, document, maintenance_template)
 
     created = await template_service.create_template(_input(maintenance_template), None, document.id)
 
     assert created.current_version.source_import_id == document.id
+
+
+async def test_source_import_debe_estar_listo_para_revision(template_service, import_service, maintenance_template):
+    document = await import_service.create_import("todavia-procesando.png", PNG_BYTES, None)
+
+    with pytest.raises(ValidationError) as error:
+        await template_service.create_template(_input(maintenance_template), None, document.id)
+
+    assert error.value.code == "source_import_not_ready"
+
+
+async def test_confirmar_draft_actualiza_corrections_count(
+    template_service, import_service, maintenance_template, fake_db
+):
+    document = await import_service.create_import("revision.png", PNG_BYTES, None)
+    original = copy.deepcopy(maintenance_template)
+    _mark_import_ready(fake_db, document, original)
+
+    revised = copy.deepcopy(original)
+    revised["sections"][0]["fields"][0]["label"] = "¿El filtro quedó completamente limpio?"
+
+    await template_service.create_template(_input(revised), None, document.id)
+
+    assert fake_db.imports[document.id].corrections_count == 1
+
+
+async def test_confirmar_draft_sin_cambios_conserva_corrections_count_en_cero(
+    template_service, import_service, maintenance_template, fake_db
+):
+    document = await import_service.create_import("revision.png", PNG_BYTES, None)
+    _mark_import_ready(fake_db, document, maintenance_template)
+
+    await template_service.create_template(_input(maintenance_template), None, document.id)
+
+    assert fake_db.imports[document.id].corrections_count == 0
 
 
 async def test_documento_original_inexistente_da_error(template_service, maintenance_template, fake_db):
@@ -149,24 +195,27 @@ async def test_documento_original_inexistente_da_error(template_service, mainten
 
 
 async def test_nueva_version_reemplaza_el_documento_solo_si_llega_uno(
-    template_service, import_service, maintenance_template
+    template_service, import_service, maintenance_template, fake_db
 ):
     first = await import_service.create_import("v1.png", PNG_BYTES, None)
+    _mark_import_ready(fake_db, first, maintenance_template)
     created = await template_service.create_template(_input(maintenance_template), None, first.id)
 
     kept = await template_service.create_version(created.id, _input(maintenance_template), None)
     assert kept.current_version.source_import_id == first.id
 
     second = await import_service.create_import("v2.png", PNG_BYTES + b"\x01", None)
+    _mark_import_ready(fake_db, second, maintenance_template)
     replaced = await template_service.create_version(created.id, _input(maintenance_template), None, second.id)
     assert replaced.current_version.source_import_id == second.id
 
 
 async def test_el_documento_nuevo_no_cambia_las_versiones_anteriores(
-    template_service, import_service, maintenance_template
+    template_service, import_service, maintenance_template, fake_db
 ):
     created = await template_service.create_template(_input(maintenance_template), None)
     document = await import_service.create_import("v2.png", PNG_BYTES, None)
+    _mark_import_ready(fake_db, document, maintenance_template)
 
     await template_service.create_version(created.id, _input(maintenance_template), None, document.id)
 

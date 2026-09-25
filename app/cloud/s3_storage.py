@@ -15,27 +15,36 @@ STORAGE_FAILED = "No pudimos guardar el archivo en este momento. Intenta de nuev
 
 
 class S3Storage:
-    """Bucket privado. boto3 es bloqueante, por eso las llamadas de red corren en otro hilo."""
+    """Bucket privado.
+
+    Las credenciales estáticas son opcionales. Si no existen, boto3 resuelve credenciales
+    mediante su provider chain estándar (por ejemplo IAM Role en AWS).
+    """
 
     def __init__(self, settings: Settings):
         self._configured = settings.storage_configured
         self._bucket = settings.s3_bucket
         self._url_expires = settings.s3_presigned_url_expires_seconds
         self._client = None
+
         if self._configured:
-            self._client = boto3.client(
-                "s3",
-                region_name=settings.aws_region,
-                aws_access_key_id=settings.aws_access_key_id,
-                aws_secret_access_key=settings.aws_secret_access_key,
-                config=Config(
+            client_kwargs = {
+                "region_name": settings.aws_region,
+                "config": Config(
                     signature_version="s3v4",
                     connect_timeout=settings.s3_timeout_seconds,
                     read_timeout=settings.s3_timeout_seconds,
                     max_pool_connections=settings.s3_max_pool_connections,
                     retries={"max_attempts": 3, "mode": "standard"},
                 ),
-            )
+            }
+            if settings.aws_static_credentials_configured:
+                client_kwargs["aws_access_key_id"] = settings.aws_access_key_id
+                client_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+                if settings.aws_session_token.strip():
+                    client_kwargs["aws_session_token"] = settings.aws_session_token
+
+            self._client = boto3.client("s3", **client_kwargs)
 
     def _require_client(self):
         if self._client is None:
@@ -76,7 +85,6 @@ class S3Storage:
             raise StorageUnavailableError(STORAGE_FAILED) from exc
 
     async def delete(self, key: str) -> None:
-        """Si el archivo ya no existe S3 responde bien igual, así que reintentar no hace daño."""
         client = self._require_client()
         try:
             await asyncio.to_thread(client.delete_object, Bucket=self._bucket, Key=key)
@@ -85,7 +93,6 @@ class S3Storage:
             raise StorageUnavailableError(STORAGE_FAILED) from exc
 
     async def get_url(self, key: str) -> str:
-        """URL temporal para ver el archivo. Firmar no hace llamadas de red."""
         client = self._require_client()
         return client.generate_presigned_url(
             "get_object",

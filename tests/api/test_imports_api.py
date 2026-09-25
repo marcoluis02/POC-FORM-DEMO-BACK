@@ -1,8 +1,10 @@
+import copy
 import uuid
 
 import pytest
 
 from app.core.config import get_settings
+from app.domain.import_status import ImportStatus
 from app.factories.services_factory import get_import_service, get_template_service
 from app.main import app
 from tests.conftest import PDF_BYTES, PNG_BYTES
@@ -110,13 +112,44 @@ async def test_consulta_de_documento_inexistente_da_404(client):
     assert response.status_code == 404
 
 
-async def test_la_plantilla_queda_ligada_al_documento(client, maintenance_template):
+async def test_la_plantilla_queda_ligada_al_documento(client, maintenance_template, fake_db):
     document = (await client.post(IMPORTS_URL, files={"file": ("r.png", PNG_BYTES, "image/png")})).json()
+    entity = fake_db.imports[uuid.UUID(document["id"])]
+    entity.status = ImportStatus.REQUIRES_REVIEW
+    entity.draft_json = copy.deepcopy(maintenance_template)
+    entity.corrections_count = 0
 
     response = await client.post(TEMPLATES_URL, params={"source_import_id": document["id"]}, json=maintenance_template)
 
     assert response.status_code == 201
     assert response.json()["current_version"]["source_import_id"] == document["id"]
+
+
+async def test_no_crea_plantilla_desde_import_que_aun_no_esta_listo(client, maintenance_template):
+    document = (await client.post(IMPORTS_URL, files={"file": ("r.png", PNG_BYTES, "image/png")})).json()
+
+    response = await client.post(TEMPLATES_URL, params={"source_import_id": document["id"]}, json=maintenance_template)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "source_import_not_ready"
+
+
+async def test_confirmar_draft_actualiza_corrections_count_por_api(client, maintenance_template, fake_db):
+    document = (await client.post(IMPORTS_URL, files={"file": ("r.png", PNG_BYTES, "image/png")})).json()
+    entity = fake_db.imports[uuid.UUID(document["id"])]
+    entity.status = ImportStatus.REQUIRES_REVIEW
+    entity.draft_json = copy.deepcopy(maintenance_template)
+    entity.corrections_count = 0
+
+    revised = copy.deepcopy(maintenance_template)
+    revised["sections"][0]["fields"][0]["label"] = "¿El filtro quedó completamente limpio?"
+
+    created = await client.post(TEMPLATES_URL, params={"source_import_id": document["id"]}, json=revised)
+    refreshed = await client.get(f"{IMPORTS_URL}/{document['id']}")
+
+    assert created.status_code == 201
+    assert refreshed.status_code == 200
+    assert refreshed.json()["corrections_count"] == 1
 
 
 async def test_plantilla_con_documento_inexistente_da_422(client, maintenance_template):

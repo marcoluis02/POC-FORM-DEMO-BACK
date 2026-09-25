@@ -1,16 +1,17 @@
 import copy
 import json
+import os
 import uuid
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-
 from app.main import app
 from app.services.idempotency_service import IdempotencyService
 from app.services.import_service import ImportService
 from app.services.response_service import ResponseService
 from app.services.template_service import TemplateService
+from tests.fakes.fake_extraction_provider import FakeExtractionProvider
 from tests.fakes.fake_unit_of_work import FakeDatabase, FakeStorage, FakeUnitOfWork
 from tests.fakes.sample_files import PNG_BYTES, make_pdf
 
@@ -108,3 +109,8 @@ def response_service(uow_factory, idempotency_service, fake_storage) -> Response
     return ResponseService(
         uow_factory, idempotency_service, fake_storage, TEST_MAX_UPLOAD_BYTES, TEST_MAX_PHOTOS_PER_FIELD
     )
+
+
+@pytest.fixture
+def fake_extraction_provider() -> FakeExtractionProvider:
+    return FakeExtractionProvider()

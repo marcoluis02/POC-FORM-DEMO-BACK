@@ -49,6 +49,10 @@ class TemplatesRepository(BaseRepository[FormTemplate]):
             stmt = stmt.where(tuple_(FormTemplate.created_at, FormTemplate.id) < tuple_(*after))
         return list((await self._session.scalars(stmt)).all())
 
+    async def get_version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion | None:
+        stmt = select(FormTemplateVersion).where(FormTemplateVersion.id == version_id)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
     async def get_version(self, template_id: uuid.UUID, version: int) -> FormTemplateVersion | None:
         stmt = select(FormTemplateVersion).where(
             FormTemplateVersion.template_id == template_id,

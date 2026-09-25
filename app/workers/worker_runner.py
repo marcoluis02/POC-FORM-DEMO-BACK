@@ -12,7 +12,7 @@ from app.models.worker_task import WorkerTask
 from app.services.worker_task_service import enqueue_task
 from app.utils.time import utc_now
 from app.workers.task_context import TaskContext
-from app.workers.task_registry import TASK_HANDLERS, recurring_dedupe_key, recurring_intervals
+from app.workers.task_registry import TASK_FAILURE_HANDLERS, TASK_HANDLERS, recurring_dedupe_key, recurring_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,14 @@ class WorkerRunner:
         retry_at = now + timedelta(seconds=self._settings.worker_retry_delay_seconds) if can_retry else None
         message = f"{type(exc).__name__}: {exc}"[:ERROR_MESSAGE_MAX_LENGTH]
         logger.warning("Tarea %s (%s) falló, intento %s: %s", task.id, task.task_type, task.attempts, message)
+
+        if not can_retry:
+            failure_handler = TASK_FAILURE_HANDLERS.get(task.task_type)
+            if failure_handler is not None:
+                try:
+                    await failure_handler(task.payload, context, exc)
+                except Exception:
+                    logger.exception("No se pudo cerrar el estado de dominio para la tarea %s", task.id)
 
         async with context.uow_factory() as uow:
             await uow.worker_tasks.mark_failed(task.id, message, retry_at, now)

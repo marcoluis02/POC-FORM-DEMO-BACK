@@ -109,14 +109,13 @@ class ResponseService:
     # ---------- Crear, consultar y listar ----------
 
     async def create_response(self, data: ResponseCreateIn, idempotency_key: str | None) -> ResponseOut:
-        """Empieza un formulario en borrador con la última versión de la plantilla."""
+        """Empieza un formulario ligado a la versión exacta que seleccionó el cliente."""
 
         async def operation(uow: UnitOfWorkInterface) -> ResponseRecord:
-            row = await uow.templates.get_with_latest_version(data.template_id)
-            if row is None:
+            version = await uow.templates.get_version_by_id(data.template_version_id)
+            if version is None:
                 raise NotFoundError(TEMPLATE_NOT_FOUND)
-            _, version = row
-            response = build_response(version, data.name)
+            response = build_response(version, data.name, data.job_demo_id)
             await uow.responses.add(response)
             return to_response_record(response, version.version, [])
 
