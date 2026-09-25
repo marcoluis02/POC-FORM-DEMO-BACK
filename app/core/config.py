@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 
@@ -9,7 +10,7 @@ ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    """Todas las variables salen del .env. No hay valores por defecto."""
+    """Configuración central. El core conserva sus variables obligatorias; IA usa defaults seguros para no romper entornos existentes."""
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
@@ -60,6 +61,15 @@ class Settings(BaseSettings):
     max_upload_mb: int = Field(gt=0)
     max_pdf_pages: int = Field(gt=0)
     max_photos_per_field: int = Field(gt=0)
+
+    # Extracción IA. Para la POC el único proveedor real soportado es OpenAI.
+    ai_provider: str = "openai"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.6-luna"
+    openai_timeout_seconds: float = Field(default=120, gt=0)
+    openai_max_retries: int = Field(default=2, ge=0)
+    openai_input_cost_per_million: Decimal = Field(default=Decimal("0.20"), ge=0)
+    openai_output_cost_per_million: Decimal = Field(default=Decimal("1.20"), ge=0)
 
     @property
     def cors_origin_list(self) -> list[str]:

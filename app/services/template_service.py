@@ -11,6 +11,7 @@ from app.factories.template_factory import (
     to_version_out,
 )
 from app.interfaces.unit_of_work import UnitOfWorkFactory, UnitOfWorkInterface
+from app.services.definition_diff import count_definition_corrections
 from app.services.definition_normalizer import normalize_definition
 from app.services.idempotency_service import IdempotencyService
 from app.services.import_service import IMPORT_NOT_FOUND
@@ -26,13 +27,29 @@ class TemplateService:
         self._idempotency = idempotency
 
     @staticmethod
-    async def _ensure_import_exists(uow: UnitOfWorkInterface, source_import_id: uuid.UUID | None) -> None:
-        if source_import_id is not None and await uow.imports.get(source_import_id) is None:
+    async def _get_source_import(uow: UnitOfWorkInterface, source_import_id: uuid.UUID | None):
+        if source_import_id is None:
+            return None
+        source_import = await uow.imports.get_for_update(source_import_id)
+        if source_import is None:
             raise ValidationError(
                 IMPORT_NOT_FOUND,
                 code="source_import_not_found",
                 details=[ErrorDetail("not_found", IMPORT_NOT_FOUND, field_id="source_import_id")],
             )
+        return source_import
+
+    @staticmethod
+    async def _record_corrections(uow: UnitOfWorkInterface, source_import, definition: FormDefinition) -> None:
+        if source_import is None or source_import.draft_json is None:
+            return
+        try:
+            original = FormDefinition.model_validate(source_import.draft_json)
+        except Exception:
+            # La métrica no debe impedir crear una plantilla válida si un registro histórico está dañado.
+            return
+        source_import.corrections_count = count_definition_corrections(original, definition)
+        await uow.imports.update(source_import)
 
     @staticmethod
     def _request_payload(data: FormDefinitionInput, source_import_id: uuid.UUID | None) -> dict:
@@ -47,10 +64,12 @@ class TemplateService:
         """Crea la plantilla y su versión 1 en una sola transacción."""
 
         async def operation(uow: UnitOfWorkInterface) -> TemplateOut:
-            await self._ensure_import_exists(uow, source_import_id)
-            template, version = build_new_template(normalize_definition(data), source_import_id)
+            source_import = await self._get_source_import(uow, source_import_id)
+            definition = normalize_definition(data)
+            template, version = build_new_template(definition, source_import_id)
             await uow.templates.add(template)
             await uow.templates.add_version(version)
+            await self._record_corrections(uow, source_import, definition)
             return to_template_out(template, version)
 
         return await self._idempotency.execute(
@@ -75,7 +94,7 @@ class TemplateService:
             template = await uow.templates.get_for_update(template_id)
             if template is None:
                 raise NotFoundError(TEMPLATE_NOT_FOUND)
-            await self._ensure_import_exists(uow, source_import_id)
+            source_import = await self._get_source_import(uow, source_import_id)
             previous = await uow.templates.get_version(template_id, template.latest_version)
             previous_definition = FormDefinition.model_validate(previous.definition_json)
 
@@ -85,6 +104,7 @@ class TemplateService:
             template.latest_version = version.version
             template.name = definition.title
             await uow.templates.add_version(version)
+            await self._record_corrections(uow, source_import, definition)
             return to_template_out(template, version)
 
         return await self._idempotency.execute(

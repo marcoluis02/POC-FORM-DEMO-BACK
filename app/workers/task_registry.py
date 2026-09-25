@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import Settings
 from app.domain.worker_task_type import WorkerTaskType
 from app.workers.handlers.delete_storage_object import delete_storage_object
+from app.workers.handlers.extract_import import extract_import
 from app.workers.handlers.purge_idempotency_keys import purge_expired_idempotency_keys
 from app.workers.task_context import TaskContext
 
@@ -12,6 +13,7 @@ TaskHandler = Callable[[dict[str, Any], TaskContext], Awaitable[None]]
 
 # Qué función procesa cada tipo de tarea. Para una tarea nueva: agregar el tipo y su handler aquí.
 TASK_HANDLERS: dict[str, TaskHandler] = {
+    WorkerTaskType.EXTRACT_IMPORT: extract_import,
     WorkerTaskType.PURGE_EXPIRED_IDEMPOTENCY_KEYS: purge_expired_idempotency_keys,
     WorkerTaskType.DELETE_STORAGE_OBJECT: delete_storage_object,
 }
