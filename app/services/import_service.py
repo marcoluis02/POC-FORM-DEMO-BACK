@@ -4,12 +4,14 @@ import uuid
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.document_types import DocumentMimeType
+from app.domain.worker_task_type import WorkerTaskType
 from app.dto.imports import ImportOut, ImportRecord
 from app.factories.import_factory import build_import, to_import_out, to_import_record
 from app.interfaces.storage_provider import StorageProvider
 from app.interfaces.unit_of_work import UnitOfWorkFactory, UnitOfWorkInterface
 from app.services.idempotency_service import IdempotencyService
 from app.services.upload_validation import check_upload
+from app.services.worker_task_service import enqueue_task
 from app.utils.filenames import clean_filename
 from app.utils.hashing import bytes_hash, stable_hash
 from app.utils.pdf_pages import ProtectedPdfError, UnreadablePdfError, count_pdf_pages
@@ -45,7 +47,7 @@ class ImportService:
         except Exception:
             logger.exception("No se pudo borrar el archivo huérfano %s", file_key)
 
-    async def _validate_pdf_pages(self, content: bytes) -> None:
+    async def _validate_pdf_pages(self, content: bytes) -> int:
         try:
             pages = await asyncio.to_thread(count_pdf_pages, content)
         except ProtectedPdfError:
@@ -60,17 +62,17 @@ class ImportService:
             raise ValidationError(
                 f"El PDF tiene {pages} páginas. El máximo es {self._max_pdf_pages}.", code="pdf_too_many_pages"
             )
+        return pages
 
-    async def _validate(self, content: bytes) -> DocumentMimeType:
+    async def _validate(self, content: bytes) -> tuple[DocumentMimeType, int]:
         """El tipo, el tamaño y las páginas se revisan aquí con el archivo real.
         Lo que diga el navegador (nombre, Content-Type) no se toma en cuenta."""
         mime_type = check_upload(content, self._max_upload_bytes, DocumentMimeType, UNSUPPORTED_DOCUMENT)
-        if mime_type == DocumentMimeType.PDF:
-            await self._validate_pdf_pages(content)
-        return mime_type
+        page_count = await self._validate_pdf_pages(content) if mime_type == DocumentMimeType.PDF else 1
+        return mime_type, page_count
 
     async def create_import(self, filename: str | None, content: bytes, idempotency_key: str | None) -> ImportOut:
-        mime_type = await self._validate(content)
+        mime_type, page_count = await self._validate(content)
         name = clean_filename(filename)
         # El hash de un archivo grande usa CPU: se calcula fuera del hilo principal
         content_hash = await asyncio.to_thread(bytes_hash, content)
@@ -84,13 +86,19 @@ class ImportService:
                 record = IdempotencyService._replay(stored, stable_hash(request_payload), ImportRecord)
                 return to_import_out(record, await self._storage.get_url(record.original_file_key))
 
-        entity = build_import(name, mime_type)
+        entity = build_import(name, mime_type, page_count)
 
         # Primero S3, luego BD. Si la BD falla, se borra el archivo para no dejarlo huérfano.
         await self._storage.put(entity.original_file_key, content, mime_type)
 
         async def operation(uow: UnitOfWorkInterface) -> ImportRecord:
             await uow.imports.add(entity)
+            await enqueue_task(
+                uow,
+                WorkerTaskType.EXTRACT_IMPORT,
+                {"import_id": str(entity.id)},
+                dedupe_key=f"extract_import:{entity.id}",
+            )
             return to_import_record(entity)
 
         try:

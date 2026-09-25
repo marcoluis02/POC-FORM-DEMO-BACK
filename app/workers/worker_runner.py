@@ -7,6 +7,7 @@ from app.cloud.s3_storage import S3Storage
 from app.core.config import Settings
 from app.core.database import DATABASE_UNAVAILABLE_ERRORS, build_engine, build_session_factory
 from app.core.unit_of_work import UnitOfWork
+from app.factories.extraction_factory import build_extraction_provider
 from app.models.worker_task import WorkerTask
 from app.services.worker_task_service import enqueue_task
 from app.utils.time import utc_now
@@ -49,6 +50,7 @@ class WorkerRunner:
             uow_factory=lambda: UnitOfWork(session_factory),
             settings=self._settings,
             storage=S3Storage(self._settings),
+            extraction_provider=build_extraction_provider(self._settings),
         )
         recurring_scheduled = False
         try:

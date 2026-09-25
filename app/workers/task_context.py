@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from app.core.config import Settings
+from app.interfaces.extraction_provider import ExtractionProvider
 from app.interfaces.storage_provider import StorageProvider
 from app.interfaces.unit_of_work import UnitOfWorkFactory
 
@@ -12,3 +13,4 @@ class TaskContext:
     uow_factory: UnitOfWorkFactory
     settings: Settings
     storage: StorageProvider
+    extraction_provider: ExtractionProvider

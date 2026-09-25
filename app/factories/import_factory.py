@@ -6,7 +6,7 @@ from app.dto.imports import ImportOut, ImportRecord
 from app.models.form_import import FormImport
 
 
-def build_import(filename: str, mime_type: DocumentMimeType) -> FormImport:
+def build_import(filename: str, mime_type: DocumentMimeType, page_count: int) -> FormImport:
     import_id = uuid.uuid4()
     return FormImport(
         id=import_id,
@@ -14,6 +14,7 @@ def build_import(filename: str, mime_type: DocumentMimeType) -> FormImport:
         original_file_key=f"imports/{import_id}/original{FILE_EXTENSIONS[mime_type]}",
         original_filename=filename,
         mime_type=mime_type,
+        page_count=page_count,
         warnings=[],
     )
 

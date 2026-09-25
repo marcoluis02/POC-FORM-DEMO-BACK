@@ -1,12 +1,13 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.document_types import DocumentMimeType
 from app.domain.response_status import ResponseStatus
-from app.dto.form_definition import MAX_FIELDS_PER_SECTION, MAX_SECTIONS, TITLE_MAX_LENGTH
+from app.dto.form_definition import FIELD_ID_PATTERN, MAX_FIELDS_PER_SECTION, MAX_SECTIONS, TITLE_MAX_LENGTH
 
 # Nunca puede haber más respuestas que preguntas en una plantilla
 MAX_VALUES = MAX_SECTIONS * MAX_FIELDS_PER_SECTION
@@ -29,6 +30,16 @@ class ResponseValuesIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=RESPONSE_NAME_MAX_LENGTH)
     values: dict[str, Any] = Field(max_length=MAX_VALUES)
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def values_must_be_field_map(cls, value):
+        if not isinstance(value, dict):
+            raise ValueError("values debe ser un objeto con respuestas por id de pregunta.")
+        malformed = [key for key in value if not isinstance(key, str) or re.fullmatch(FIELD_ID_PATTERN, key) is None]
+        if malformed:
+            raise ValueError("values contiene ids de pregunta con formato inválido.")
+        return value
 
 
 class AttachmentRecord(BaseModel):

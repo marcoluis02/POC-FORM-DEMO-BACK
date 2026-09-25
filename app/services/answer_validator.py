@@ -109,7 +109,10 @@ def clean_values(definition: FormDefinition, values: dict[str, Any]) -> tuple[di
             if field.type == FieldType.SELECT:
                 result = _clean_select(value, field)
             else:
-                result = CLEANERS[field.type](value)
+                cleaner = CLEANERS.get(field.type)
+                if cleaner is None:
+                    raise InvalidAnswer("Este tipo de pregunta no acepta una respuesta directa.")
+                result = cleaner(value)
         except InvalidAnswer as error:
             errors.append(ErrorDetail("invalid_value", str(error), field_id=field_id))
             continue
