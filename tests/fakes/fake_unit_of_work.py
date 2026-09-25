@@ -61,6 +61,14 @@ class FakeStorage:
             raise StorageUnavailableError("S3 no responde")
         self.objects[key] = (data, content_type)
 
+    async def get(self, key: str) -> bytes:
+        if self.fail:
+            raise StorageUnavailableError("S3 no responde")
+        try:
+            return self.objects[key][0]
+        except KeyError as exc:
+            raise StorageUnavailableError("Objeto no encontrado") from exc
+
     async def delete(self, key: str) -> None:
         if self.fail:
             raise StorageUnavailableError("S3 no responde")
@@ -82,6 +90,14 @@ class FakeImportsRepository:
 
     async def get(self, entity_id: uuid.UUID) -> FormImport | None:
         return self._db.imports.get(entity_id)
+
+    async def get_for_update(self, import_id: uuid.UUID) -> FormImport | None:
+        return self._db.imports.get(import_id)
+
+    async def update(self, entity: FormImport) -> FormImport:
+        entity.updated_at = utc_now()
+        self._pending["imports"].append(entity)
+        return entity
 
 
 class FakeTemplatesRepository:
@@ -119,6 +135,12 @@ class FakeTemplatesRepository:
         if after is not None:
             rows = [row for row in rows if (row.created_at, row.id) < after]
         return rows[:limit]
+
+    async def get_version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion | None:
+        try:
+            return self._db.version_by_id(version_id)
+        except StopIteration:
+            return None
 
     async def get_version(self, template_id: uuid.UUID, version: int) -> FormTemplateVersion | None:
         return self._db.versions.get((template_id, version))

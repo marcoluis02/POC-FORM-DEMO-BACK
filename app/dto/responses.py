@@ -15,10 +15,18 @@ RESPONSE_NAME_MAX_LENGTH = TITLE_MAX_LENGTH
 
 
 class ResponseCreateIn(BaseModel):
+    """Crea un llenado ligado a una versión exacta de plantilla.
+
+    El front debe usar el `current_version.id`/`TemplateVersionOut.id` que ya mostró
+    al usuario. Así no existe una carrera si aparece una versión nueva entre render
+    y creación de la respuesta.
+    """
+
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    template_id: uuid.UUID
+    template_version_id: uuid.UUID
     name: str = Field(min_length=1, max_length=RESPONSE_NAME_MAX_LENGTH)
+    job_demo_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class ResponseValuesIn(BaseModel):
@@ -75,6 +83,7 @@ class ResponseRecord(BaseModel):
     template_version_id: uuid.UUID
     version: int
     name: str
+    job_demo_id: str | None = None
     status: ResponseStatus
     values: dict[str, Any]
     attachments: list[AttachmentRecord]
@@ -89,6 +98,7 @@ class ResponseOut(BaseModel):
     template_version_id: uuid.UUID
     version: int
     name: str
+    job_demo_id: str | None = None
     status: ResponseStatus
     values: dict[str, Any]
     attachments: list[AttachmentOut]

@@ -1,4 +1,5 @@
 import base64
+import logging
 from decimal import Decimal
 
 from openai import (
@@ -19,6 +20,8 @@ from app.interfaces.extraction_provider import (
     ExtractionResult,
     ExtractionWarning,
 )
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You extract the structure of paper/web forms from an uploaded PDF or image.
 
@@ -50,6 +53,9 @@ Positions must reflect reading order, beginning at 1 inside each level.
 USER_PROMPT = """Extract this document into the provided schema. Return a reviewable draft, not a published template.
 Use warnings for uncertainty or partial extraction. If it is not possible to extract a useful form, set can_extract=false."""
 
+PDF_DETAIL = "high"
+IMAGE_DETAIL = "high"
+
 
 class OpenAIWarning(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -73,8 +79,9 @@ class OpenAIExtractionProvider:
     def __init__(self, settings: Settings):
         self._configured = bool(settings.openai_api_key.strip())
         self._model = settings.openai_model
-        self._input_cost_per_million = settings.openai_input_cost_per_million
-        self._output_cost_per_million = settings.openai_output_cost_per_million
+        # Settings garantiza que ambas tarifas existen para el modelo configurado.
+        self._input_cost_per_million = settings.openai_input_cost_per_million or Decimal("0")
+        self._output_cost_per_million = settings.openai_output_cost_per_million or Decimal("0")
         self._client = (
             AsyncOpenAI(
                 api_key=settings.openai_api_key,
@@ -94,19 +101,27 @@ class OpenAIExtractionProvider:
     def _content(cls, source: ExtractionInput) -> list[dict]:
         data_url = cls._data_url(source)
         if source.mime_type == DocumentMimeType.PDF:
+            # Responses API admite detail en input_file para PDF. En GPT-5.6, auto ya usa
+            # alta fidelidad; se deja high explícito porque esta POC prioriza letra pequeña.
             return [
                 {"type": "input_text", "text": USER_PROMPT},
                 {
                     "type": "input_file",
                     "filename": source.filename,
                     "file_data": data_url,
-                    "detail": "high",
+                    "detail": PDF_DETAIL,
                 },
             ]
         return [
             {"type": "input_text", "text": USER_PROMPT},
-            {"type": "input_image", "image_url": data_url, "detail": "high"},
+            {"type": "input_image", "image_url": data_url, "detail": IMAGE_DETAIL},
         ]
+
+    @staticmethod
+    def _status_is_retryable(status_code: int | None) -> bool:
+        if status_code is None:
+            return False
+        return status_code in {408, 409, 425, 429} or status_code >= 500
 
     def _estimated_cost(self, response) -> Decimal | None:
         usage = getattr(response, "usage", None)
@@ -142,30 +157,47 @@ class OpenAIExtractionProvider:
             )
         except APITimeoutError as exc:
             raise ExtractionProviderError(
-                "ai_timeout", "La IA tardó demasiado en procesar el documento."
+                "ai_timeout",
+                "La IA tardó demasiado en procesar el documento.",
+                retryable=True,
             ) from exc
         except RateLimitError as exc:
             raise ExtractionProviderError(
-                "ai_rate_limited", "La IA está ocupada temporalmente. Intenta procesar el documento de nuevo."
+                "ai_rate_limited",
+                "La IA está ocupada temporalmente. El procesamiento se reintentará.",
+                retryable=True,
             ) from exc
         except APIConnectionError as exc:
             raise ExtractionProviderError(
-                "ai_unavailable", "No fue posible conectarse con el proveedor de IA."
+                "ai_unavailable",
+                "No fue posible conectarse con el proveedor de IA.",
+                retryable=True,
             ) from exc
         except APIStatusError as exc:
+            status_code = getattr(exc, "status_code", None)
+            request_id = getattr(exc, "request_id", None)
+            logger.warning(
+                "OpenAI rechazó extracción: status=%s request_id=%s",
+                status_code,
+                request_id,
+            )
             raise ExtractionProviderError(
-                "ai_provider_error", "El proveedor de IA no pudo procesar el documento."
+                "ai_provider_error",
+                "El proveedor de IA no pudo procesar el documento.",
+                retryable=self._status_is_retryable(status_code),
             ) from exc
         except Exception as exc:
             # No se persiste ni se expone el detalle crudo del proveedor/documento.
             raise ExtractionProviderError(
-                "ai_invalid_output", "La IA devolvió un resultado que no pudimos validar."
+                "ai_invalid_output",
+                "La IA devolvió un resultado que no pudimos validar.",
             ) from exc
 
         parsed = getattr(response, "output_parsed", None)
         if parsed is None:
             raise ExtractionProviderError(
-                "ai_invalid_output", "La IA no devolvió una estructura válida para revisar."
+                "ai_invalid_output",
+                "La IA no devolvió una estructura válida para revisar.",
             )
 
         warnings = [
@@ -175,7 +207,8 @@ class OpenAIExtractionProvider:
         definition = parsed.definition if parsed.can_extract else None
         if parsed.can_extract and definition is None:
             raise ExtractionProviderError(
-                "ai_invalid_output", "La IA indicó extracción exitosa, pero no devolvió el formulario."
+                "ai_invalid_output",
+                "La IA indicó extracción exitosa, pero no devolvió el formulario.",
             )
 
         return ExtractionResult(

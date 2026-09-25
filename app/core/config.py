@@ -2,15 +2,25 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
+# Precio publicado para GPT-5.6 Luna al cerrar esta POC.
+# Si se usa otro modelo, las tarifas deben declararse explícitamente en el entorno.
+DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
+DEFAULT_LUNA_INPUT_COST_PER_MILLION = Decimal("0.20")
+DEFAULT_LUNA_OUTPUT_COST_PER_MILLION = Decimal("1.20")
+
 
 class Settings(BaseSettings):
-    """Configuración central. El core conserva sus variables obligatorias; IA usa defaults seguros para no romper entornos existentes."""
+    """Configuración central del backend.
+
+    Las credenciales estáticas de AWS son opcionales: si no se informan, boto3 usa su
+    credential provider chain (IAM Role, variables estándar, perfil, workload identity, etc.).
+    """
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
@@ -50,11 +60,11 @@ class Settings(BaseSettings):
     pagination_default_limit: int = Field(gt=0)
     pagination_max_limit: int = Field(gt=0)
 
-    # Deben existir en el .env; si están vacías la app arranca, pero subir archivos responde 503
     s3_bucket: str
     aws_region: str
-    aws_access_key_id: str
-    aws_secret_access_key: str
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_session_token: str = ""
     s3_presigned_url_expires_seconds: int = Field(gt=0)
     s3_max_pool_connections: int = Field(gt=0)
     s3_timeout_seconds: int = Field(gt=0)
@@ -62,14 +72,46 @@ class Settings(BaseSettings):
     max_pdf_pages: int = Field(gt=0)
     max_photos_per_field: int = Field(gt=0)
 
-    # Extracción IA. Para la POC el único proveedor real soportado es OpenAI.
+    # Extracción IA. Para la POC el único provider implementado es OpenAI.
     ai_provider: str = "openai"
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.6-luna"
+    openai_model: str = DEFAULT_OPENAI_MODEL
     openai_timeout_seconds: float = Field(default=120, gt=0)
-    openai_max_retries: int = Field(default=2, ge=0)
-    openai_input_cost_per_million: Decimal = Field(default=Decimal("0.20"), ge=0)
-    openai_output_cost_per_million: Decimal = Field(default=Decimal("1.20"), ge=0)
+    # El worker es quien controla los retries durables. El SDK queda sin retry por default
+    # para evitar multiplicar intentos/costo; puede habilitarse explícitamente si se desea.
+    openai_max_retries: int = Field(default=0, ge=0)
+    openai_input_cost_per_million: Decimal | None = Field(default=None, ge=0)
+    openai_output_cost_per_million: Decimal | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_cross_field_configuration(self):
+        static_parts = [self.aws_access_key_id.strip(), self.aws_secret_access_key.strip()]
+        if any(static_parts) and not all(static_parts):
+            raise ValueError(
+                "AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben configurarse juntos, "
+                "o dejarse ambos vacíos para usar la credential chain de boto3."
+            )
+        if self.aws_session_token.strip() and not all(static_parts):
+            raise ValueError("AWS_SESSION_TOKEN requiere AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY.")
+
+        input_price = self.openai_input_cost_per_million
+        output_price = self.openai_output_cost_per_million
+
+        if input_price is None and output_price is None:
+            if self.openai_model == DEFAULT_OPENAI_MODEL:
+                self.openai_input_cost_per_million = DEFAULT_LUNA_INPUT_COST_PER_MILLION
+                self.openai_output_cost_per_million = DEFAULT_LUNA_OUTPUT_COST_PER_MILLION
+            else:
+                raise ValueError(
+                    "Al cambiar OPENAI_MODEL debes configurar también "
+                    "OPENAI_INPUT_COST_PER_MILLION y OPENAI_OUTPUT_COST_PER_MILLION."
+                )
+        elif input_price is None or output_price is None:
+            raise ValueError(
+                "OPENAI_INPUT_COST_PER_MILLION y OPENAI_OUTPUT_COST_PER_MILLION "
+                "deben configurarse juntos."
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -77,8 +119,12 @@ class Settings(BaseSettings):
 
     @property
     def storage_configured(self) -> bool:
-        values = (self.s3_bucket, self.aws_region, self.aws_access_key_id, self.aws_secret_access_key)
-        return all(value.strip() for value in values)
+        # S3 puede autenticarse sin credenciales estáticas mediante IAM/default chain.
+        return bool(self.s3_bucket.strip() and self.aws_region.strip())
+
+    @property
+    def aws_static_credentials_configured(self) -> bool:
+        return bool(self.aws_access_key_id.strip() and self.aws_secret_access_key.strip())
 
     @property
     def max_upload_bytes(self) -> int:

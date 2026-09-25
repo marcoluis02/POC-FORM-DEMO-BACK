@@ -19,7 +19,7 @@ async def template(template_service, inspection_template):
 @pytest.fixture
 async def draft(response_service, template):
     return await response_service.create_response(
-        ResponseCreateIn(template_id=template.id, name=DEFAULT_NAME), None
+        ResponseCreateIn(template_version_id=template.current_version.id, name=DEFAULT_NAME), None
     )
 
 
@@ -34,27 +34,32 @@ async def _add_photo(service, response_id, field_id="f_007", key=None, content=P
 # ---------- Crear y consultar ----------
 
 
-async def test_crea_borrador_con_la_ultima_version(response_service, template_service, template, inspection_template):
+async def test_crea_borrador_con_la_version_exacta_solicitada(
+    response_service, template_service, template, inspection_template
+):
+    v1_id = template.current_version.id
     await template_service.create_version(template.id, FormDefinitionInput.model_validate(inspection_template), None)
 
     created = await response_service.create_response(
-        ResponseCreateIn(template_id=template.id, name=DEFAULT_NAME), None
+        ResponseCreateIn(template_version_id=v1_id, name=DEFAULT_NAME, job_demo_id="job-demo-1"), None
     )
 
     assert created.status == "draft"
     assert created.name == DEFAULT_NAME
-    assert created.version == 2
+    assert created.version == 1
+    assert created.template_version_id == v1_id
+    assert created.job_demo_id == "job-demo-1"
     assert created.values == {}
     assert created.submitted_at is None
 
 
 async def test_crear_con_plantilla_inexistente_da_404(response_service):
     with pytest.raises(NotFoundError):
-        await response_service.create_response(ResponseCreateIn(template_id=uuid.uuid4(), name=DEFAULT_NAME), None)
+        await response_service.create_response(ResponseCreateIn(template_version_id=uuid.uuid4(), name=DEFAULT_NAME), None)
 
 
 async def test_crear_con_la_misma_llave_no_duplica(response_service, template, fake_db):
-    data = ResponseCreateIn(template_id=template.id, name=DEFAULT_NAME)
+    data = ResponseCreateIn(template_version_id=template.current_version.id, name=DEFAULT_NAME)
 
     first = await response_service.create_response(data, "crear-1")
     second = await response_service.create_response(data, "crear-1")
@@ -251,7 +256,7 @@ async def test_quitar_foto_inexistente_da_404(response_service, draft):
 
 async def test_lista_por_plantilla_del_mas_nuevo_al_mas_viejo_con_cursor(response_service, template):
     created = [
-        await response_service.create_response(ResponseCreateIn(template_id=template.id, name=f"Llenado {i}"), None)
+        await response_service.create_response(ResponseCreateIn(template_version_id=template.current_version.id, name=f"Llenado {i}"), None)
         for i in range(3)
     ]
 
