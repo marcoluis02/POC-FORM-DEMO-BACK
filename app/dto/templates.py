@@ -23,6 +23,9 @@ class TemplateSummaryOut(BaseModel):
     latest_version: int
     created_at: datetime
     updated_at: datetime
+    section_count: int = 0
+    question_count: int = 0
+    section_titles: list[str] = []
 
 
 class TemplateOut(TemplateSummaryOut):

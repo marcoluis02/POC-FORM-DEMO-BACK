@@ -32,8 +32,13 @@ async def test_listado_regresa_resumen_sin_definicion(client, maintenance_templa
     assert response.status_code == 200
     body = response.json()
     assert len(body["items"]) == 1
-    assert body["items"][0]["name"] == "Revisión de mantenimiento"
-    assert "current_version" not in body["items"][0]
+    item = body["items"][0]
+    assert item["name"] == "Revisión de mantenimiento"
+    assert "current_version" not in item
+    assert "definition" not in item
+    assert item["section_count"] == 1
+    assert item["question_count"] == 2
+    assert item["section_titles"] == ["General"]
     assert body["next_cursor"] is None
 
 

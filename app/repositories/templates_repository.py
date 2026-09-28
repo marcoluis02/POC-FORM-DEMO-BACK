@@ -41,13 +41,24 @@ class TemplatesRepository(BaseRepository[FormTemplate]):
 
     async def list_page(
         self, limit: int, after: tuple[datetime, uuid.UUID] | None
-    ) -> list[FormTemplate]:
-        """Plantillas de la más nueva a la más vieja, una sola consulta sin las definiciones.
+    ) -> list[tuple[FormTemplate, FormTemplateVersion | None]]:
+        """Plantillas con su última versión, de la más nueva a la más vieja, en una sola consulta.
         after es la última fila de la página anterior (paginación por cursor, no usa OFFSET)."""
-        stmt = select(FormTemplate).order_by(FormTemplate.created_at.desc(), FormTemplate.id.desc()).limit(limit)
+        stmt = (
+            select(FormTemplate, FormTemplateVersion)
+            .outerjoin(
+                FormTemplateVersion,
+                and_(
+                    FormTemplateVersion.template_id == FormTemplate.id,
+                    FormTemplateVersion.version == FormTemplate.latest_version,
+                ),
+            )
+            .order_by(FormTemplate.created_at.desc(), FormTemplate.id.desc())
+            .limit(limit)
+        )
         if after is not None:
             stmt = stmt.where(tuple_(FormTemplate.created_at, FormTemplate.id) < tuple_(*after))
-        return list((await self._session.scalars(stmt)).all())
+        return [(row[0], row[1]) for row in (await self._session.execute(stmt)).all()]
 
     async def get_version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion | None:
         stmt = select(FormTemplateVersion).where(FormTemplateVersion.id == version_id)

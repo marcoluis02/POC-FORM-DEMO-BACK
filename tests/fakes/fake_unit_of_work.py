@@ -134,7 +134,7 @@ class FakeTemplatesRepository:
         rows = sorted(self._db.templates.values(), key=lambda t: (t.created_at, t.id), reverse=True)
         if after is not None:
             rows = [row for row in rows if (row.created_at, row.id) < after]
-        return rows[:limit]
+        return [(row, self._db.versions.get((row.id, row.latest_version))) for row in rows[:limit]]
 
     async def get_version_by_id(self, version_id: uuid.UUID) -> FormTemplateVersion | None:
         try:
