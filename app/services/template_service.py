@@ -135,8 +135,12 @@ class TemplateService:
 
         page = rows[:limit]
         has_more = len(rows) > limit
-        next_cursor = encode_cursor(page[-1].created_at, page[-1].id) if has_more else None
-        return TemplatePageOut(items=[to_template_summary_out(row) for row in page], next_cursor=next_cursor)
+        last = page[-1][0] if page else None
+        next_cursor = encode_cursor(last.created_at, last.id) if has_more and last is not None else None
+        return TemplatePageOut(
+            items=[to_template_summary_out(template, version) for template, version in page],
+            next_cursor=next_cursor,
+        )
 
     async def get_template(self, template_id: uuid.UUID) -> TemplateOut:
         async with self._uow_factory() as uow:

@@ -45,7 +45,33 @@ def to_version_out(version: FormTemplateVersion) -> TemplateVersionOut:
     )
 
 
-def to_template_summary_out(template: FormTemplate) -> TemplateSummaryOut:
+def definition_card(definition_json: dict | None) -> tuple[int, int, list[str]]:
+    """Cuenta secciones y preguntas sin armar el formulario completo."""
+    raw_sections = (definition_json or {}).get("sections")
+    if not isinstance(raw_sections, list):
+        return 0, 0, []
+    titles: list[str] = []
+    questions = 0
+    section_count = 0
+    for section in raw_sections:
+        if not isinstance(section, dict):
+            continue
+        section_count += 1
+        title = section.get("title")
+        if isinstance(title, str) and title.strip():
+            titles.append(title.strip())
+        fields = section.get("fields")
+        if isinstance(fields, list):
+            questions += len(fields)
+    return section_count, questions, titles
+
+
+def to_template_summary_out(
+    template: FormTemplate, version: FormTemplateVersion | None = None
+) -> TemplateSummaryOut:
+    section_count, question_count, section_titles = definition_card(
+        version.definition_json if version is not None else None
+    )
     return TemplateSummaryOut(
         id=template.id,
         name=template.name,
@@ -53,11 +79,14 @@ def to_template_summary_out(template: FormTemplate) -> TemplateSummaryOut:
         latest_version=template.latest_version,
         created_at=template.created_at,
         updated_at=template.updated_at,
+        section_count=section_count,
+        question_count=question_count,
+        section_titles=section_titles,
     )
 
 
 def to_template_out(template: FormTemplate, version: FormTemplateVersion) -> TemplateOut:
     return TemplateOut(
-        **to_template_summary_out(template).model_dump(),
+        **to_template_summary_out(template, version).model_dump(),
         current_version=to_version_out(version),
     )
